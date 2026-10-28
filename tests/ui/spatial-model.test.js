@@ -52,38 +52,44 @@ test('empty and malformed input never acquires matching cases or crashes',()=>{
   }
 });
 
-test('generated geometry has finite 3D vertices for every face and all three spaces',()=>{
-  const faces=createSpatialGeometry();
-  assert.ok(faces.length>500 && faces.length<3000,'bounded scene complexity');
-  for(const face of faces){
-    assert.ok(face.points.length>=3);
-    for(const point of face.points){assert.equal(point.length,3);assert.ok(point.every(Number.isFinite));}
+test('each keyword produces a bounded finite campus with its own learning space',()=>{
+  for(const topic of SPATIAL_TOPICS) {
+    const faces=createSpatialGeometry({},topic.id);
+    assert.ok(faces.length>100 && faces.length<3500,'bounded scene complexity');
+    for(const face of faces){
+      assert.ok(face.points.length>=3);
+      for(const point of face.points){assert.equal(point.length,3);assert.ok(point.every(Number.isFinite));}
+    }
+    assert.ok(faces.some(face=>face.topic===topic.id),'the selected concept is physically represented');
   }
-  for(const topic of SPATIAL_TOPICS)assert.ok(faces.some(face=>face.topic===topic.id));
 });
 
-test('cutaway removes pavilion enclosure geometry, preserving the same campus and interior furniture',()=>{
-  const closed=createSpatialGeometry(),open=createSpatialGeometry({cutaway:true});
-  assert.ok(open.length<closed.length);
-  assert.deepEqual(open.filter(face=>!face.topic),closed.filter(face=>!face.topic));
-  assert.ok(open.some(face=>face.topic==='community_sharing'));
-  assert.ok(open.some(face=>face.topic==='flexible_learning'));
+test('each layout keeps its main campus and teaching spaces when its enclosure is opened',()=>{
+  for(const {id} of SPATIAL_TOPICS) {
+    const closed=createSpatialGeometry({},id),open=createSpatialGeometry({cutaway:true},id);
+    assert.ok(open.length<closed.length);
+    assert.deepEqual(open,closed.filter(face=>!face.enclosure));
+    assert.ok(open.some(face=>face.topic===id && face.layer==='building'));
+    assert.ok(open.some(face=>!face.topic && face.layer==='building'),'main school mass remains opaque');
+  }
 });
 
-test('whole exterior is opaque by default and transparency continuously changes only the two pavilion enclosures',()=>{
-  const solid=createSpatialGeometry(),half=createSpatialGeometry({transparency:50}),open=createSpatialGeometry({transparency:100});
-  assert.ok(solid.every(face=>face.opacity===1));
-  assert.equal(half.length,solid.length);
-  assert.deepEqual(half.map(face=>face.points),solid.map(face=>face.points));
-  assert.ok(half.some(face=>face.enclosure && face.opacity===0.5));
-  assert.ok(half.filter(face=>!face.enclosure).every(face=>face.opacity===1));
-  assert.ok(half.filter(face=>face.enclosure).every(face=>['community_sharing','flexible_learning'].includes(face.topic)));
-  assert.deepEqual(open,solid.filter(face=>!face.enclosure));
+test('every layout starts solid and transparency affects only its designated enclosure',()=>{
+  for(const {id} of SPATIAL_TOPICS) {
+    const solid=createSpatialGeometry({},id),half=createSpatialGeometry({transparency:50},id),open=createSpatialGeometry({transparency:100},id);
+    assert.ok(solid.every(face=>face.opacity===1));
+    assert.equal(half.length,solid.length);
+    assert.deepEqual(half.map(face=>face.points),solid.map(face=>face.points));
+    assert.ok(half.some(face=>face.enclosure && face.opacity===0.5));
+    assert.ok(half.filter(face=>!face.enclosure).every(face=>face.opacity===1));
+    assert.ok(half.filter(face=>face.enclosure).every(face=>face.topic===id));
+    assert.deepEqual(open,solid.filter(face=>!face.enclosure));
+  }
 });
 
 test('site is painted behind buildings and visible roofs and main walls survive every view',()=>{
-  for(const angle of [-180,-90,0,32,90,180]) {
-    const faces=projectSpatialFaces({angle});
+  for(const {id} of SPATIAL_TOPICS) for(const angle of [-180,-90,0,32,90,180]) {
+    const faces=projectSpatialFaces({angle},id);
     const firstBuilding=faces.findIndex(face=>face.layer==='building');
     assert.ok(firstBuilding>0);
     assert.ok(faces.slice(firstBuilding).every(face=>face.layer==='building'),'no ground face can cover a building');
@@ -99,6 +105,22 @@ test('camera screen height and depth form orthogonal axes; farther ground moves 
   assert.ok(back.y<origin.y && back.depth>origin.depth);
   const dot=(up.y-origin.y)*(up.depth-origin.depth)+(back.y-origin.y)*(back.depth-origin.depth);
   assert.ok(Math.abs(dot)<1e-10,'screen and sorting axes cannot describe different cameras');
+});
+
+test('all campus buildings and topic labels fit the scene at maximum zoom through full rotation',()=>{
+  for(const topic of SPATIAL_TOPICS) {
+    const points=[...new Map(createSpatialGeometry({},topic.id).filter(face=>face.layer==='building')
+      .flatMap(face=>face.points).map(point=>[point.join(','),point])).values()];
+    for(let angle=-180;angle<=180;angle+=4) {
+      const view={angle,zoom:130};
+      for(const point of points) {
+        const p=projectSpatialPoint(point,view);
+        assert.ok(p.x>=0 && p.x<=800 && p.y>=0 && p.y<=420,`${topic.id}, ${angle} degrees: building clipped`);
+      }
+      const marker=projectSpatialPoint(topic.point,view);
+      assert.ok(marker.x-72>=0 && marker.x+72<=800 && marker.y-67>=0 && marker.y+7<=420,'topic label remains within scene');
+    }
+  }
 });
 
 test('rotation and zoom change projection, while higher points project upward and toward the viewer',()=>{
@@ -122,11 +144,50 @@ test('view inputs remain bounded and malformed values cannot poison SVG coordina
   assert.doesNotMatch(svg,/NaN|Infinity/);
 });
 
-test('changing keyword preserves all projected geometry at the same view',()=>{
+test('keyword selection changes building shape rather than only marker, metadata or colour',()=>{
   const polygons=svg=>[...svg.matchAll(/<polygon points="([^"]+)"/g)].map(match=>match[1]);
-  const view={angle:76,zoom:110,cutaway:true};
-  const reference=polygons(buildSpatialSvg({topicId:'outdoor_learning',view}));
-  for(const topic of ['community_sharing','flexible_learning'])assert.deepEqual(polygons(buildSpatialSvg({topicId:topic,view})),reference);
+  for(const transparency of [0,50,100]) {
+    const view=Object.freeze({angle:76,zoom:110,transparency});
+    const scenes=SPATIAL_TOPICS.map(({id})=>({
+      geometry:createSpatialGeometry(view,id).filter(face=>face.layer==='building').map(face=>face.points),
+      svg:polygons(buildSpatialSvg({topicId:id,view})),
+    }));
+    for(let a=0;a<scenes.length;a++) for(let b=a+1;b<scenes.length;b++) {
+      assert.notDeepEqual(scenes[a].geometry,scenes[b].geometry);
+      assert.notDeepEqual(scenes[a].svg,scenes[b].svg);
+    }
+    for(const [i,{id}] of SPATIAL_TOPICS.entries()) {
+      assert.deepEqual(polygons(buildSpatialSvg({topicId:id,view})),scenes[i].svg,'switching back gives the original layout and view');
+    }
+    assert.deepEqual(view,{angle:76,zoom:110,transparency});
+  }
+});
+
+test('layouts share the same site footprint and each export describes the selected alternative',()=>{
+  const footprints=SPATIAL_TOPICS.map(({id})=>createSpatialGeometry({},id).filter(face=>face.points.every(point=>point[1]<=0)).map(face=>face.points));
+  for(const footprint of footprints.slice(1))assert.deepEqual(footprint,footprints[0]);
+  for(const topic of SPATIAL_TOPICS) {
+    assert.equal(topic.designMoves.length,3);
+    const svg=buildSpatialSvg({topicId:topic.id,view:{angle:72,zoom:115,transparency:50},report:{scopeLabel:'2025년'}});
+    assert.ok(svg.includes(topic.layoutLabel));
+    assert.ok(svg.includes(topic.id));
+    assert.ok(svg.includes('2025년'));
+  }
+});
+
+test('SVG metadata keeps selected layout and view consistent and unknown keywords use the same fallback',()=>{
+  const decode=value=>value.replace(/&(amp|lt|gt|quot|apos);/g,(_,name)=>({amp:'&',lt:'<',gt:'>',quot:'"',apos:"'"}[name]));
+  for(const topic of SPATIAL_TOPICS) {
+    const view={angle:-48,zoom:130,transparency:50};
+    const svg=buildSpatialSvg({topicId:topic.id,view});
+    const metadata=JSON.parse(decode(svg.match(/<metadata>(.*?)<\/metadata>/s)[1]));
+    assert.equal(metadata.topic_id,topic.id);
+    assert.equal(metadata.layout_label,topic.layoutLabel);
+    assert.equal(metadata.layout_id,`${SPATIAL_MODEL.model_id}-${topic.id}`);
+    assert.deepEqual(metadata.view,view);
+  }
+  assert.equal(buildSpatialSvg({topicId:'unknown'}),buildSpatialSvg());
+  assert.deepEqual(createSpatialGeometry({},'unknown'),createSpatialGeometry());
 });
 
 test('export contains model type, creator, source, rights, scope and assumptions; strings cannot inject SVG',()=>{
