@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {CONNECTIONS, createConnectionState, publicConnectionState, prerequisite} from '../../src/integrations/connection-state.js';
-import {connectionText} from '../../src/ui/official-status.js';
+import {connectionText, buildingCoverageText} from '../../src/ui/official-status.js';
 
 const successful = {status: 'candidates_ready', complete: true, checked_at: '2026-10-28T01:00:00.000Z', last_success_at: '2026-10-28T01:00:00.000Z', retrieved_count: 5, source_total: 2667};
 
@@ -73,6 +73,19 @@ test('KOSIS selection publishes only a bounded safe scope, never configuration c
   assert.deepEqual(publicConnectionState(state).services.kosis.selection, {municipalities: 2, ages: '6–17', months: ['202509', '202609']});
 });
 
+test('official KOSIS bulk delivery stays distinct from API authentication and is safe to reprocess', () => {
+  const state = createConnectionState();
+  state.services.kosis = {...successful, method: 'official_bulk_download', required_env: 'SECRET',
+    source_url: 'https://example.com/?apiKey=SECRET', provenance: {key: 'SECRET', rows: ['PRIVATE']}};
+  const output = publicConnectionState(state);
+  assert.equal(output.services.kosis.method, 'official_bulk_download');
+  assert.equal(Object.hasOwn(output.services.kosis, 'required_env'), false);
+  assert.match(output.services.kosis.source_url, /^https:\/\/kosis\.kr\/statisticsList\/mass\/mass_list\.jsp\?/);
+  assert.doesNotMatch(JSON.stringify(output), /SECRET|PRIVATE|example\.com/);
+  assert.match(connectionText(output.services.kosis), /공식 CSV 다운로드/);
+  assert.deepEqual(publicConnectionState(output), output);
+});
+
 test('SchoolInfo district scope survives public reload without publishing raw geography or keys', () => {
   const state = createConnectionState();
   state.services.schoolinfo = {...successful, geography: {boundary_basis: 'schoolinfo_current_query_codes',
@@ -113,6 +126,8 @@ test('prerequisites distinguish keys, reviewed-parcel input and population confi
   assert.equal(prerequisite('buildings', {DATA_GO_KR_SERVICE_KEY: 'present'}, {parcels: 'local.json'}), null);
   assert.equal(prerequisite('kosis', {}), 'key_and_config_required');
   assert.equal(prerequisite('kosis', {}, {config: 'reviewed.json'}), 'key_required');
+  assert.equal(prerequisite('kosis', {}, {bulk: true}), 'config_required');
+  assert.equal(prerequisite('kosis', {}, {bulk: true, config: 'reviewed.json'}), null);
   assert.equal(prerequisite('kosis', {KOSIS_API_KEY: 'present'}), 'config_required');
   assert.equal(prerequisite('kosis', {KOSIS_API_KEY: 'present'}, {config: 'local.json'}), null);
   assert.throws(() => prerequisite('unknown', {}));
@@ -164,4 +179,41 @@ test('NEIS normalization metadata cannot assert success with quarantined rows or
     result = publicConnectionState(state).services.neis;
     for (const field of ['raw_count', 'quarantined_count', 'normalization_complete']) assert.equal(Object.hasOwn(result, field), false);
   }
+});
+
+test('building status shows missing approval dates without publishing candidates or claiming age readiness', () => {
+  const state = createConnectionState();
+  state.building_candidates = [{name: 'PRIVATE-BUILDING'}];
+  state.services.buildings = {...successful, retrieved_count: 3, queried_parcels: 2,
+    approval_date_available_count: 0, approval_date_missing_count: 3, approval_dates: ['PRIVATE-DATE']};
+  const output = publicConnectionState(state);
+  assert.equal(output.services.buildings.approval_date_available_count, 0);
+  assert.equal(output.services.buildings.approval_date_missing_count, 3);
+  assert.equal(buildingCoverageText(output.services.buildings), '건물 후보 3건 · 사용승인일 제공 0건 · 미확인 3건. 사용승인일이 없어 건물 연령을 계산할 수 없습니다.');
+  assert.doesNotMatch(JSON.stringify(output), /PRIVATE|building_candidates|approval_dates/);
+  assert.deepEqual(publicConnectionState(output), output);
+  state.services.buildings.approval_date_available_count = 1;
+  state.services.buildings.approval_date_missing_count = 2;
+  assert.match(buildingCoverageText(publicConnectionState(state).services.buildings), /사용승인일 제공 1건 · 미확인 2건.*동일성을 확인한 뒤/);
+  state.services.buildings = {...successful, retrieved_count: 0, approval_date_available_count: 0, approval_date_missing_count: 0};
+  assert.match(buildingCoverageText(publicConnectionState(state).services.buildings), /학교 전체의 건물 수를 뜻하지 않습니다/);
+});
+
+test('building coverage excludes inconsistent or stale counts and cannot leak through other providers', () => {
+  const state = createConnectionState();
+  for (const available of [undefined, null, '0', -1, 4, 0.5]) {
+    state.services.buildings = {...successful, retrieved_count: 3, approval_date_available_count: available, approval_date_missing_count: 3};
+    const output = publicConnectionState(state).services.buildings;
+    assert.equal(Object.hasOwn(output, 'approval_date_available_count'), false);
+    assert.equal(Object.hasOwn(output, 'approval_date_missing_count'), false);
+    assert.equal(buildingCoverageText(output), null);
+  }
+  state.services.buildings = {...successful, retrieved_count: 3, approval_date_available_count: 0, approval_date_missing_count: 3,
+    last_attempt: {status: 'error', checked_at: '2026-10-28T03:00:00.000Z'}};
+  const failed = publicConnectionState(state).services.buildings;
+  assert.equal(failed.status, 'error');
+  assert.equal(Object.hasOwn(failed, 'approval_date_available_count'), false);
+  assert.equal(buildingCoverageText(failed), null);
+  state.services.neis = {...successful, approval_date_available_count: 0, approval_date_missing_count: 5};
+  assert.equal(Object.hasOwn(publicConnectionState(state).services.neis, 'approval_date_available_count'), false);
 });

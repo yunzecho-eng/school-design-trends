@@ -24,8 +24,9 @@ export function createConnectionState() {
   }]))};
 }
 
-export function prerequisite(kind, env, {sample = false, parcels, config} = {}) {
+export function prerequisite(kind, env, {sample = false, bulk = false, parcels, config} = {}) {
   if (!CONNECTIONS[kind]) throw new Error('지원하지 않는 데이터 종류입니다.');
+  if (kind === 'kosis' && bulk) return config ? null : 'config_required';
   if (sample && ['neis', 'schoolinfo', 'firms'].includes(kind)) return null;
   if (!env[CONNECTIONS[kind].env]?.trim()) return kind === 'kosis' && config || kind === 'buildings' && parcels ? 'key_required' : initialStatus(kind);
   if (kind === 'buildings' && !parcels) return 'parcel_required';
@@ -54,7 +55,17 @@ export function publicConnectionState(input) {
     }
     // Counts describe the latest successful request only, never a failed/missing request.
     if (['sample_only', 'subset_only', 'candidates_ready'].includes(target.status)) {
+      if (kind === 'kosis' && source.method === 'official_bulk_download') {
+        target.method = 'official_bulk_download';
+        target.source_url = 'https://kosis.kr/statisticsList/mass/mass_list.jsp?list_id=A_7&org_id=101&process=statHtml&tbl_id=DT_1B04006&vw_cd=MT_ZTITLE';
+        delete target.required_env;
+      } else if (source.method === 'api') target.method = 'api';
       for (const key of ['retrieved_count', 'source_total', 'sample_count', 'queried_parcels']) if (validCount(source[key])) target[key] = source[key];
+      if (kind === 'buildings' && validCount(source.retrieved_count) && validCount(source.approval_date_available_count) &&
+          validCount(source.approval_date_missing_count) && source.retrieved_count === source.approval_date_available_count + source.approval_date_missing_count) {
+        target.approval_date_available_count = source.approval_date_available_count;
+        target.approval_date_missing_count = source.approval_date_missing_count;
+      }
       // 학교 API는 원시 응답 수집 완료와 학교 식별자 정규화 완료가 다르다.
       // 원문·격리 사유는 비공개로 남기고 서로 일치하는 건수만 공개한다.
       if (['neis', 'schoolinfo'].includes(kind) && validCount(source.raw_count) && validCount(source.quarantined_count) &&

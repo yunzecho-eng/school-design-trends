@@ -120,6 +120,13 @@ export function normalizeOfficialBuilding(row, parcel, retrievedAt) {
   };
 }
 
+// Count only usable normalized approval dates. Opening/registry-creation dates
+// cannot fill a missing useAprDay, and this does not approve a school/building match.
+export function buildingDateCoverage(records) {
+  const available = records.filter(row => row.date_basis === 'useAprDay' && date(row.use_approval_date) && !row.date_issue).length;
+  return {approval_date_available_count: available, approval_date_missing_count: records.length - available};
+}
+
 async function requestJson(url, fetchImpl) {
   let response;
   try { response = await fetchImpl(url, {signal: AbortSignal.timeout(25_000)}); }

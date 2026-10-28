@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {normalizeFirmName, normalizeOfficialFirm, matchOfficialFirms, parseGgFirmResponse, parseBuildingResponse,
-  validateParcel, normalizeOfficialBuilding, fetchOfficialFirms, fetchOfficialBuildings} from '../../src/integrations/official-data.js';
+  validateParcel, normalizeOfficialBuilding, buildingDateCoverage, fetchOfficialFirms, fetchOfficialBuildings} from '../../src/integrations/official-data.js';
 
 const office = (name = '(주)예시건축사사무소', code = '41110') => ({OFC_NM: name, SIGUN_CD: code, SIGUN_NM: '수원시', REFINE_ROADNM_ADDR: '경기도 수원시 예시로 1', DATA_STD_DE: null});
 const gg = (rows, total = rows.length) => ({Buildofc: [{head: [{list_total_count: total}, {RESULT: {CODE: 'INFO-000'}}]}, {row: rows}]});
@@ -104,6 +104,18 @@ test('building age input uses approval date only and retains unknown, invalid an
     assert.equal(result.use_approval_date, null);
     assert.ok(result.date_issue);
   }
+});
+
+test('building date coverage counts valid useAprDay only and never substitutes opening or creation dates', () => {
+  const records = ['19861019', '', '19860230', '20271019'].map((useAprDay, index) => normalizeOfficialBuilding({
+    ...building(), mgmBldrgstPk: `PK-${index}`, useAprDay, FOND_YMD: '19200401', crtnDay: '20220909',
+  }, parcel, '2026-10-28T00:00:00Z'));
+  assert.deepEqual(buildingDateCoverage(records), {approval_date_available_count: 1, approval_date_missing_count: 3});
+  assert.deepEqual(buildingDateCoverage(records.slice(1)), {approval_date_available_count: 0, approval_date_missing_count: 3});
+  assert.deepEqual(buildingDateCoverage([]), {approval_date_available_count: 0, approval_date_missing_count: 0});
+  assert.deepEqual(buildingDateCoverage([{...records[0], date_basis: 'FOND_YMD'}, {...records[0], date_issue: '검토 필요'}]),
+    {approval_date_available_count: 0, approval_date_missing_count: 2});
+  assert.ok(records.every(row => row.verified === false && row.match_status === 'parcel_candidate'));
 });
 
 test('building fetch preserves distinct wings and rejects paging duplication', async () => {

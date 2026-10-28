@@ -66,6 +66,78 @@ test('CLI all with no keys exits 2 and reports five pending providers without fe
   await f.noNetwork();
 });
 
+test('CLI bulk KOSIS routes without a key and publishes only its explicit collection method', async t => {
+  const state = createConnectionState();
+  state.services.neis = {...successful};
+  const f = await fixture(t, state);
+  await writeFile(join(f.root, 'data/config.json'), '{"fixture":true}');
+  const sourceUrl = 'https://kosis.kr/statisticsList/mass/mass_list.jsp?tbl_id=DT_1B04006';
+  const sources = [{kind: 'metadata', url: 'https://kosis.kr/file_mass/file_down.jsp?file_type=META', sha256: 'a'.repeat(64), filename: 'PRIVATE-METADATA.csv'},
+    {kind: 'archive', year: '2025', url: 'https://kosis.kr/file_mass/file_down.jsp?file_type=ONE', archive_sha256: 'b'.repeat(64), csv_sha256: 'c'.repeat(64), filename: 'PRIVATE-ARCHIVE.csv'}];
+  const bulkResult = {rows: [{private: 'PRIVATE-ROW'}], scope: 'complete', method: 'official_bulk_download', authenticated_api: false,
+    scope_basis: 'configured_municipalities_ages_months', retrieved_at: goodTime, release_created_at: '2026/10/06 09:10:16',
+    source_id: 'kosis-resident-population', source_url: sourceUrl, sources, selection: {municipalities: 1, months: ['202512'], ages: '6–17'}};
+  await writeFile(join(f.root, 'src/integrations/kosis-bulk.js'), `export async function fetchKosisBulkPopulation(options){if(Object.hasOwn(options,'key')||options.config.fixture!==true)throw new Error('Bad boundary');return ${JSON.stringify(bulkResult)};}`);
+  const result = f.run(['kosis', '--bulk', '--config', 'data/config.json']);
+  assert.equal(result.status, 0, result.stderr);
+  assert.doesNotMatch(result.stdout, /PRIVATE/);
+  const collected = await f.readState();
+  assert.equal(collected.population_records.length, 1);
+  assert.equal(collected.services.kosis.method, 'official_bulk_download');
+  assert.equal(collected.services.kosis.authenticated_api, false);
+  assert.equal(collected.services.kosis.scope_basis, bulkResult.scope_basis);
+  assert.equal(collected.services.kosis.retrieved_at, goodTime);
+  assert.equal(collected.services.kosis.release_created_at, bulkResult.release_created_at);
+  assert.equal(collected.services.kosis.source_id, bulkResult.source_id);
+  assert.equal(collected.services.kosis.source_url, sourceUrl);
+  assert.deepEqual(collected.services.kosis.sources, sources);
+  assert.equal(Object.hasOwn(collected.services.kosis, 'required_env'), false);
+  assert.deepEqual(collected.services.neis, state.services.neis);
+  const status = lines(f.run(['status']).stdout).find(row => row.kind === 'kosis');
+  assert.equal(status.key_configured, false);
+  assert.equal(status.method, 'official_bulk_download');
+  assert.equal(status.saved_status, 'candidates_ready');
+  assert.equal(f.run(['publish-status']).status, 0);
+  const publicText = await readFile(join(f.root, 'public/official-enrichment.json'), 'utf8');
+  assert.doesNotMatch(publicText, /PRIVATE/);
+  assert.equal(JSON.parse(publicText).services.kosis.method, 'official_bulk_download');
+  await f.noNetwork();
+});
+
+test('CLI authenticated KOSIS refresh replaces bulk provenance rather than carrying stale archive hashes', async t => {
+  const state = createConnectionState();
+  state.services.kosis = {...successful, method: 'official_bulk_download', authenticated_api: false,
+    sources: [{filename: 'OLD-ARCHIVE.csv'}], release_created_at: '2026/10/06 09:10:16'};
+  const f = await fixture(t, state);
+  await writeFile(join(f.root, 'data/config.json'), '{"fixture":true}');
+  const apiResult = {rows: [{private: 'PRIVATE-API-ROW'}], scope: 'complete', source_id: 'kosis-resident-population',
+    source_url: 'https://kosis.kr/statisticsList/mass/mass_list.jsp?tbl_id=DT_1B04006',
+    scope_basis: 'configured_municipalities_ages_months', selection: {municipalities: 1, months: ['202512'], ages: '6–17'}};
+  await writeFile(join(f.root, 'src/integrations/kosis.js'), `export async function fetchKosisPopulation(options){if(options.key!=='SECRET-TEST-ONLY'||options.config.fixture!==true)throw new Error('Bad boundary');return ${JSON.stringify(apiResult)};}`);
+  const result = f.run(['kosis', '--config', 'data/config.json'], {KOSIS_API_KEY: 'SECRET-TEST-ONLY'});
+  assert.equal(result.status, 0, result.stderr);
+  assert.doesNotMatch(result.stdout + result.stderr, /PRIVATE|SECRET/);
+  const collected = await f.readState();
+  const service = collected.services.kosis;
+  assert.equal(service.method, 'api');
+  assert.equal(service.authenticated_api, true);
+  assert.equal(service.required_env, 'KOSIS_API_KEY');
+  assert.equal(service.scope_basis, apiResult.scope_basis);
+  assert.equal(service.retrieved_at, service.checked_at);
+  assert.equal(Object.hasOwn(service, 'sources'), false);
+  assert.equal(Object.hasOwn(service, 'release_created_at'), false);
+  assert.equal(collected.population_records[0].private, 'PRIVATE-API-ROW');
+  await f.noNetwork();
+});
+
+test('CLI rejects ambiguous bulk combinations before modifying saved results', async t => {
+  const f = await fixture(t);
+  const before = await readFile(f.stateFile, 'utf8');
+  for (const args of [['all', '--bulk'], ['neis', '--bulk'], ['kosis', '--bulk', '--sample']]) assert.equal(f.run(args).status, 1);
+  assert.equal(await readFile(f.stateFile, 'utf8'), before);
+  await f.noNetwork();
+});
+
 test('CLI sample preserves each previous full provider result byte-for-byte and makes no request', async t => {
   const state = createConnectionState();
   for (const kind of ['neis', 'schoolinfo', 'firms']) state.services[kind] = {...successful};
@@ -192,5 +264,37 @@ test('CLI stores quarantined NEIS rows privately and publishes only consistent c
   assert.equal(publicState.services.neis.quarantined_count, 3);
   assert.equal(publicState.services.neis.normalization_complete, false);
   assert.equal(await readFile(join(f.root, 'mock-pages'), 'utf8'), '1\n');
+  await f.noNetwork();
+});
+
+test('CLI building collection preserves missing dates privately and publishes truthful date coverage', async t => {
+  const f = await fixture(t);
+  const parcel = {school_id: 'PRIVATE-SCHOOL', sigunguCd: '41410', bjdongCd: '10100', platGbCd: '0', bun: '0795', ji: '0004',
+    reviewed: true, source_url: 'https://example.test/official-school'};
+  await writeFile(join(f.root, 'data/private/parcels.json'), JSON.stringify([parcel]));
+  const rows = ['A동', 'B동', 'C동'].map((dongNm, index) => ({...parcel, mgmBldrgstPk: `PRIVATE-PK-${index}`,
+    bldNm: 'PRIVATE-SCHOOL', dongNm, useAprDay: '', crtnDay: '20220909', FOND_YMD: '19200401'}));
+  await writeFile(join(f.root, 'network-guard.mjs'), `globalThis.fetch=async input=>{
+    const url=new URL(input);
+    if(url.origin!=='https://apis.data.go.kr'||url.pathname!=='/1613000/BldRgstHubService/getBrTitleInfo')throw new Error('UNEXPECTED-MOCK-REQUEST');
+    return {ok:true,json:async()=>({response:{header:{resultCode:'00'},body:{totalCount:3,items:{item:${JSON.stringify(rows)}}}}})};
+  };`);
+  const collectedRun = f.run(['buildings', '--parcels', 'data/private/parcels.json'], {DATA_GO_KR_SERVICE_KEY: 'SECRET-TEST-ONLY'});
+  assert.equal(collectedRun.status, 0, collectedRun.stderr);
+  assert.doesNotMatch(collectedRun.stdout + collectedRun.stderr, /PRIVATE|SECRET/);
+  const collected = await f.readState();
+  assert.equal(collected.services.buildings.approval_date_available_count, 0);
+  assert.equal(collected.services.buildings.approval_date_missing_count, 3);
+  assert.ok(collected.building_candidates.every(row => row.use_approval_date === null && row.verified === false));
+  const status = lines(f.run(['status']).stdout).find(row => row.kind === 'buildings');
+  assert.equal(status.approval_date_available_count, 0);
+  assert.equal(status.approval_date_missing_count, 3);
+  assert.equal(f.run(['publish-status']).status, 0);
+  const publicText = await readFile(join(f.root, 'public/official-enrichment.json'), 'utf8');
+  assert.doesNotMatch(publicText, /PRIVATE|SECRET|19200401|20220909|use_approval_date/);
+  const service = JSON.parse(publicText).services.buildings;
+  assert.equal(service.retrieved_count, 3);
+  assert.equal(service.approval_date_available_count, 0);
+  assert.equal(service.approval_date_missing_count, 3);
   await f.noNetwork();
 });

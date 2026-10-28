@@ -52,19 +52,38 @@
       "sample_count": 5
     },
     "buildings": {
-      "status": "key_and_parcel_required",
-      "complete": false,
+      "status": "candidates_ready",
+      "complete": true,
       "source_url": "https://www.data.go.kr/data/15134735/openapi.do",
       "required_env": "DATA_GO_KR_SERVICE_KEY",
-      "review_status": "candidate_only"
+      "review_status": "candidate_only",
+      "checked_at": "2026-10-28T05:30:42.700Z",
+      "last_success_at": "2026-10-28T05:30:42.700Z",
+      "method": "api",
+      "retrieved_count": 3,
+      "queried_parcels": 2,
+      "approval_date_available_count": 0,
+      "approval_date_missing_count": 3
     },
     "kosis": {
-      "status": "key_required",
-      "complete": false,
-      "source_url": "https://kosis.kr/openapi/devGuide/devGuide_0201List.do",
-      "required_env": "KOSIS_API_KEY",
-      "review_status": "candidate_only"
+      "status": "candidates_ready",
+      "complete": true,
+      "source_url": "https://kosis.kr/statisticsList/mass/mass_list.jsp?list_id=A_7&org_id=101&process=statHtml&tbl_id=DT_1B04006&vw_cd=MT_ZTITLE",
+      "review_status": "candidate_only",
+      "checked_at": "2026-10-28T05:29:36.789Z",
+      "last_success_at": "2026-10-28T05:29:36.789Z",
+      "method": "official_bulk_download",
+      "retrieved_count": 1116,
+      "selection": {
+        "municipalities": 31,
+        "ages": "6–17",
+        "months": [
+          "202312",
+          "202412",
+          "202512"
+        ]
+      }
     }
   },
-  "checked_at": "2026-10-28T05:10:51.216Z"
+  "checked_at": "2026-10-28T05:30:42.700Z"
 }

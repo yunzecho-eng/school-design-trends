@@ -5,6 +5,7 @@ export function connectionText(service) {
   if (!service) return '연결 상태 미확인';
   const count = service.retrieved_count ?? service.sample_count;
   const label = Number.isSafeInteger(count) && count >= 0 ? `${count}건` : '건수 미확인';
+  if (service.method === 'official_bulk_download' && service.status === 'candidates_ready' && service.complete) return `공식 CSV 다운로드 ${label} · 지역·연령·월별 관측값`;
   const normalizedCounts = [service.raw_count, service.retrieved_count, service.quarantined_count].every(value => Number.isSafeInteger(value) && value >= 0) &&
     service.raw_count === service.retrieved_count + service.quarantined_count;
   if (normalizedCounts && (['sample_only', 'subset_only'].includes(service.status) || service.status === 'candidates_ready' && service.complete)) {
@@ -20,18 +21,28 @@ export function connectionText(service) {
   return STATUS_LABELS[service.status] ?? '연결 상태 미확인';
 }
 
+export function buildingCoverageText(service) {
+  if (service?.status !== 'candidates_ready' || !service.complete) return null;
+  const {retrieved_count: count, approval_date_available_count: available, approval_date_missing_count: missing} = service;
+  if (![count, available, missing].every(value => Number.isSafeInteger(value) && value >= 0) || count !== available + missing) return null;
+  if (!count) return '조회한 필지에서 건물 응답이 없습니다. 학교 전체의 건물 수를 뜻하지 않습니다.';
+  return `건물 후보 ${count}건 · 사용승인일 제공 ${available}건 · 미확인 ${missing}건. ${available === 0 ? '사용승인일이 없어 건물 연령을 계산할 수 없습니다.' : '학교·건물 동일성을 확인한 뒤 연령 계산에 사용합니다.'}`;
+}
+
 export function renderConnections(container, enrichment) {
   const valid = enrichment?.schema_version === 'official-enrichment-1';
   const state = publicConnectionState(enrichment);
   const cards = Object.entries(CONNECTIONS).map(([kind, item]) => {
     const service = valid ? state.services[kind] : null;
+    const buildingCoverage = kind === 'buildings' ? buildingCoverageText(service) : null;
     return el('article', {class: 'api-connection-card'}, [el('h3', {}, item.title),
       el('p', {class: 'api-state'}, connectionText(service)), el('p', {}, item.purpose),
+      buildingCoverage ? el('p', {class: 'small'}, buildingCoverage) : null,
       service?.selection ? el('small', {}, `${service.selection.municipalities}개 시·군 · ${service.selection.months.join(', ')} · 연령별 셀 수`) : null,
       service?.geography ? el('small', {}, `현재 코드표 ${service.geography.queried_districts}/${service.geography.official_sgg_count}개 시·군·구 · 과거 행정경계 통계와 구분`) : null,
       service?.queried_parcels !== undefined ? el('small', {}, `확인한 학교 지번 ${service.queried_parcels}곳 · 경기도 전체 아님`) : null,
       service?.checked_at ? el('small', {}, `조회 확인 ${service.checked_at.slice(0, 10)}${service.year ? ` · 공시연도 ${service.year}` : ''}`) : null,
-      el('a', {href: item.url, target: '_blank', rel: 'noopener noreferrer'}, '공식 API 안내 ↗')]);
+      el('a', {href: service?.source_url ?? item.url, target: '_blank', rel: 'noopener noreferrer'}, service?.method === 'official_bulk_download' ? '공식 자료 내려받기 ↗' : '공식 API 안내 ↗')]);
   });
   container.replaceChildren(el('summary', {}, '공식 데이터 연결 현황 · 학교·시설·사무소·건물·인구'),
     el('p', {}, '아래는 외부 데이터의 수집 상태입니다. 조회 결과를 확인한 뒤 작품집 사례와 연결하므로, 아카이브의 학교·건물 집계와 수가 다를 수 있습니다.'),
@@ -44,7 +55,9 @@ export function officialStatus(kind, enrichment) {
   const service = enrichment?.schema_version === 'official-enrichment-1' ? publicConnectionState(enrichment).services[kind] : null;
   const title = kind === 'firms' ? '경기도 건축사사무소 공식 정보' : '건물별 사용승인일 연결';
   const text = connectionText(service);
-  const panel = el('aside',{class:'connection-status'},el('div',{},[el('strong',{},title),el('p',{},text)]));
+  const buildingCoverage = kind === 'buildings' ? buildingCoverageText(service) : null;
+  const panel = el('aside',{class:'connection-status'},el('div',{},[el('strong',{},title),el('p',{},text),
+    buildingCoverage ? el('p',{class:'small'},buildingCoverage) : null]));
   const url = safeUrl(service?.source_url);
   if (url) panel.append(el('a',{href:url,target:'_blank',rel:'noopener noreferrer'},'공식 자료 안내 ↗'));
   const details = el('details',{class:'external-data-details'},[el('summary',{},'연결 방법과 제공 범위'),

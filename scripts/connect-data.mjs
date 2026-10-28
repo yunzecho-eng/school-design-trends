@@ -3,7 +3,7 @@ import {resolve, dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {CONNECTIONS, STATUS_LABELS, createConnectionState, publicConnectionState, prerequisite} from '../src/integrations/connection-state.js';
 import {fetchNeisSchools, matchNeisSchools} from '../src/integrations/neis.js';
-import {fetchOfficialFirms, matchOfficialFirms, fetchOfficialBuildings} from '../src/integrations/official-data.js';
+import {fetchOfficialFirms, matchOfficialFirms, fetchOfficialBuildings, buildingDateCoverage} from '../src/integrations/official-data.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2);
@@ -21,11 +21,13 @@ async function atomicJson(file, data) {
 
 async function run() {
   if (mode === 'help' || args.includes('--help')) {
-    console.log('npm run data:connect -- <status|neis|schoolinfo|firms|buildings|kosis|all|publish-status> [--sample] [--year 2025] [--parcels data/private/school-parcels.json] [--config data/private/kosis-population.json]\n상세: docs/API_SETUP.md');
+    console.log('npm run data:connect -- <status|neis|schoolinfo|firms|buildings|kosis|all|publish-status> [--sample] [--year 2025] [--parcels data/private/school-parcels.json] [--config data/private/kosis-population.json]\nKOSIS 공식 파일 다운로드: kosis --bulk --config data/config/kosis-population.example.json\n상세: docs/API_SETUP.md');
     return;
   }
   if (!['status', 'publish-status', 'all', ...Object.keys(CONNECTIONS)].includes(mode)) throw new Error('데이터 종류를 확인하세요. help 명령으로 사용법을 볼 수 있습니다.');
   const sample = args.includes('--sample');
+  const bulk = args.includes('--bulk');
+  if (bulk && (mode !== 'kosis' || sample)) throw new Error('--bulk는 kosis 전체 파일 조회에만 사용할 수 있습니다.');
   if (sample && ['buildings', 'kosis'].includes(mode)) throw new Error('이 API는 무인증 시험 조회를 지원하지 않습니다.');
   let state = createConnectionState();
   try {
@@ -33,15 +35,17 @@ async function run() {
     if (previous.schema_version !== state.schema_version) throw new Error('schema');
     state = {...previous, services: {...state.services, ...previous.services}};
   } catch (error) { if (error.code !== 'ENOENT') throw new Error('이전 비공개 연결 결과를 읽지 못했습니다. 파일을 확인하세요.'); }
-  const options = {sample, parcels: option('--parcels'), config: option('--config')};
+  const options = {sample, bulk, parcels: option('--parcels'), config: option('--config')};
   if (mode === 'status') {
     const visible = publicConnectionState(state);
     for (const [kind, item] of Object.entries(CONNECTIONS)) {
       const service = visible.services[kind];
-      console.log(JSON.stringify({kind, title: item.title, key_configured: Boolean(process.env[item.env]?.trim()), required_env: item.env,
+      console.log(JSON.stringify({kind, title: item.title, key_configured: Boolean(process.env[item.env]?.trim()), required_env: service.required_env, method: service.method,
         saved_status: service.status, last_success_at: service.last_success_at, raw_count: service.raw_count,
         retrieved_count: service.retrieved_count, quarantined_count: service.quarantined_count,
-        normalization_complete: service.normalization_complete}));
+        normalization_complete: service.normalization_complete,
+        approval_date_available_count: service.approval_date_available_count,
+        approval_date_missing_count: service.approval_date_missing_count}));
     }
     return;
   }
@@ -91,7 +95,7 @@ async function run() {
         const parcels = await readJson(options.parcels);
         if (!Array.isArray(parcels) || !parcels.every(p => p.reviewed === true && typeof p.source_url === 'string' && /^https:\/\//.test(p.source_url))) throw new Error('학교 지번마다 reviewed:true와 대조한 source_url이 필요합니다.');
         const records = await fetchOfficialBuildings({key, parcels, retrievedAt: checkedAt});
-        data = {rows: records, total: records.length, scope: 'complete', queried_parcels: parcels.length};
+        data = {rows: records, total: records.length, scope: 'complete', queried_parcels: parcels.length, ...buildingDateCoverage(records)};
         rows.building_candidates = records;
       } else if (kind === 'schoolinfo') {
         const {fetchSchoolInfo} = await import('../src/integrations/schoolinfo.js');
@@ -100,8 +104,14 @@ async function run() {
         rows.schoolinfo_quarantine = data.quarantine;
         rows.schoolinfo_queries = data.queries;
       } else {
-        const {fetchKosisPopulation} = await import('../src/integrations/kosis.js');
-        data = await fetchKosisPopulation({key, config: await readJson(options.config)});
+        const config = await readJson(options.config);
+        if (bulk) {
+          const {fetchKosisBulkPopulation} = await import('../src/integrations/kosis-bulk.js');
+          data = await fetchKosisBulkPopulation({config, retrievedAt: checkedAt});
+        } else {
+          const {fetchKosisPopulation} = await import('../src/integrations/kosis.js');
+          data = await fetchKosisPopulation({key, config});
+        }
         rows.population_records = data.rows;
       }
       const isSample = data.scope === 'sample_only';
@@ -114,14 +124,20 @@ async function run() {
         ...(['neis', 'schoolinfo'].includes(kind) ? {raw_count: data.raw_count, quarantined_count: data.quarantined_count,
           normalization_complete: data.normalization_complete, scope_basis: data.scope_basis} : {}),
         queried_parcels: data.queried_parcels, year: kind === 'schoolinfo' ? option('--year') ?? '2025' : undefined,
-        source_url: CONNECTIONS[kind].url, required_env: CONNECTIONS[kind].env, review_status: 'candidate_only',
+        ...(kind === 'buildings' ? {approval_date_available_count: data.approval_date_available_count,
+          approval_date_missing_count: data.approval_date_missing_count} : {}),
+        source_url: data.source_url ?? CONNECTIONS[kind].url, required_env: bulk ? undefined : CONNECTIONS[kind].env, review_status: 'candidate_only',
+        method: bulk ? 'official_bulk_download' : 'api', provenance: data.provenance,
+        ...(kind === 'kosis' ? {scope_basis: data.scope_basis, authenticated_api: !bulk,
+          retrieved_at: data.retrieved_at ?? checkedAt, source_id: data.source_id,
+          sources: data.sources, release_created_at: data.release_created_at} : {}),
         query_count: data.queries?.length, selection: data.selection, limitations: data.limitations,
         geography: data.geography, planned_requests: data.planned_requests, completed_requests: data.completed_requests,
       }}};
       await atomicJson(stateFile, next);
       state = next;
       succeeded++;
-      console.log(JSON.stringify({kind, status: state.services[kind].status, records: data.rows.length, scope: data.scope,
+      console.log(JSON.stringify({kind, status: state.services[kind].status, records: data.rows.length, scope: data.scope, method: state.services[kind].method,
         raw_count: data.raw_count, quarantined_count: data.quarantined_count, normalization_complete: data.normalization_complete}));
     } catch {
       failed++;
