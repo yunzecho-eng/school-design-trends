@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "start": "node tools/preview.mjs",
-    "test": "node --test"
+    "test": "node --test",
+    "data:connect": "node --env-file-if-exists=.env scripts/connect-data.mjs"
   },
   "engines": { "node": ">=22.12.0" }
 }

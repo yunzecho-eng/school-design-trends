@@ -2,6 +2,7 @@
 <html lang="ko">
 <head>
   <meta charset="utf-8">
+  <meta name="author" content="yunze">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="description" content="경기도교육청 공모집 수록 당선작과 가상 학교 공간 모델을 살펴보는 설계 사례 아카이브. 자료의 검수 상태와 근거를 함께 제공합니다.">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' https:; connect-src 'self'; frame-src https://www.goe.go.kr; object-src 'none'; base-uri 'none'; form-action 'none'">
@@ -14,6 +15,7 @@
   <link rel="stylesheet" href="src/styles/overview.css">
   <link rel="stylesheet" href="src/styles/spatial-model.css">
   <link rel="stylesheet" href="src/styles/refinement.css">
+  <link rel="stylesheet" href="src/styles/api-connections.css">
   <script type="module" src="src/ui/app.js"></script>
 </head>
 <body>
@@ -57,6 +59,7 @@
     <aside id="loading-help" class="loading-help"><strong>화면이 계속 불러오기 상태라면</strong><p>이 도구는 웹 모듈과 JSON 자료를 읽습니다. HTML 파일을 더블클릭한 <code>file://</code> 주소에서는 브라우저가 이를 차단할 수 있습니다. 배포된 웹 주소로 접속하거나, 저장소 폴더에서 <code>npm start</code>를 실행한 뒤 <code>http://127.0.0.1:4173</code>을 여세요.</p><p>웹 주소에서도 계속 표시되면 새로고침 후 JavaScript 사용 설정과 자료 요청 오류를 확인해 주세요. 정상적으로 자료를 표시하면 이 안내는 사라집니다.</p></aside>
     <div id="error" class="error-box" role="alert" hidden></div>
     <details id="data-warnings" class="data-warnings" hidden><summary>자료 확인 사항</summary></details>
+    <details id="api-connections" class="api-connections"><summary>공식 데이터 연결 현황</summary></details>
     <div class="results-meta"><p id="scope">자료 확인 중</p><button id="reload-demo" class="text-button" type="button">기본 예시 다시 불러오기</button></div>
     <details class="data-quality-details"><summary>자료 범위와 확인 사항</summary><p id="coverage-scope" class="small">자료 범위 확인 중</p><p id="quality-scope" class="small"></p></details>
     <section id="stats" class="stats" aria-label="필터 적용 요약"></section>

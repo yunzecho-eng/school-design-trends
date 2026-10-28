@@ -1,15 +1,38 @@
 import {el, safeUrl} from './dom.js';
+import {CONNECTIONS, STATUS_LABELS, publicConnectionState} from '../integrations/connection-state.js';
+
+export function connectionText(service) {
+  if (!service) return '연결 상태 미확인';
+  const count = service.retrieved_count ?? service.sample_count;
+  const label = Number.isSafeInteger(count) && count >= 0 ? `${count}건` : '건수 미확인';
+  if (service.status === 'sample_only') return `시험 응답 ${label} · 전체 조회 아님`;
+  if (service.status === 'candidates_ready') return service.complete ? `요청 범위 ${label} 조회 · 학교·사업 연결 검토 전` : '연결 상태 미확인';
+  return STATUS_LABELS[service.status] ?? '연결 상태 미확인';
+}
+
+export function renderConnections(container, enrichment) {
+  const valid = enrichment?.schema_version === 'official-enrichment-1';
+  const state = publicConnectionState(enrichment);
+  const cards = Object.entries(CONNECTIONS).map(([kind, item]) => {
+    const service = valid ? state.services[kind] : null;
+    return el('article', {class: 'api-connection-card'}, [el('h3', {}, item.title),
+      el('p', {class: 'api-state'}, connectionText(service)), el('p', {}, item.purpose),
+      service?.selection ? el('small', {}, `${service.selection.municipalities}개 시·군 · ${service.selection.months.join(', ')} · 연령별 셀 수`) : null,
+      service?.queried_parcels !== undefined ? el('small', {}, `확인한 학교 지번 ${service.queried_parcels}곳 · 경기도 전체 아님`) : null,
+      service?.checked_at ? el('small', {}, `조회 확인 ${service.checked_at.slice(0, 10)}${service.year ? ` · 공시연도 ${service.year}` : ''}`) : null,
+      el('a', {href: item.url, target: '_blank', rel: 'noopener noreferrer'}, '공식 API 안내 ↗')]);
+  });
+  container.replaceChildren(el('summary', {}, '공식 데이터 연결 현황 · 학교·시설·사무소·건물·인구'),
+    el('p', {}, '아래는 외부 데이터의 수집 상태입니다. 조회 결과를 확인한 뒤 작품집 사례와 연결하므로, 아카이브의 학교·건물 집계와 수가 다를 수 있습니다.'),
+    el('div', {class: 'api-connection-grid'}, cards),
+    el('a', {href: 'docs/API_SETUP.md', target: '_blank', rel: 'noopener noreferrer'}, '인증키 발급·연결 순서 ↗'));
+}
 
 /** Public connection status; unreviewed matches never become confirmed records. */
 export function officialStatus(kind, enrichment) {
-  const service = enrichment?.schema_version === 'official-enrichment-1' ? enrichment.services?.[kind] : null;
+  const service = enrichment?.schema_version === 'official-enrichment-1' ? publicConnectionState(enrichment).services[kind] : null;
   const title = kind === 'firms' ? '경기도 건축사사무소 공식 정보' : '건물별 사용승인일 연결';
-  const text = !service ? '공식 데이터 연결 상태를 확인하지 못했습니다.' : kind === 'firms'
-    ? service.complete ? `공식 자료 ${service.retrieved_count ?? 0}건 조회 · 사무소별 일치 여부 확인 필요`
-      : service.status === 'sample_only' && service.checked_at ? `API 접속 확인 · 시험 응답 ${service.sample_count ?? 0}건 · 전체 조회는 인증키 설정 후 가능`
-        : '전체 사무소 조회를 위한 인증키 설정이 필요합니다.'
-    : service.complete ? '건물대장 조회 완료 · 학교·건물별 연결 검토 필요'
-      : '건물대장 인증키와 정확한 지번이 필요합니다. 개교일로 건물 나이를 계산하지 않습니다.';
+  const text = connectionText(service);
   const panel = el('aside',{class:'connection-status'},el('div',{},[el('strong',{},title),el('p',{},text)]));
   const url = safeUrl(service?.source_url);
   if (url) panel.append(el('a',{href:url,target:'_blank',rel:'noopener noreferrer'},'공식 자료 안내 ↗'));

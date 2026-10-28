@@ -1,0 +1,16 @@
+{
+  "schema_version": "kosis-population-config-1",
+  "verified": false,
+  "verified_at": null,
+  "selection_note": "KOSIS 공식 URL 생성기에서 101 / DT_1B04006의 경기도 시·군, 6~17세, 남녀 합계 인구를 선택하고 코드·분류축·명칭을 대조한 뒤 verified와 확인일을 기록하세요. 인증키나 전체 요청 URL을 붙여 넣지 마세요.",
+  "boundary_note": "동일한 시·군 경계인지 확인하고 개편 지역의 비교 방법을 기록하세요. 일반구와 상위 시를 함께 넣지 마세요.",
+  "orgId": "101",
+  "tblId": "DT_1B04006",
+  "province": "경기도",
+  "dimensions": {"region": "", "age": ""},
+  "regions": [],
+  "ages": [],
+  "item": {"code": "", "name": "", "meaning": "total_resident_population"},
+  "months": ["202409", "202509", "202609"],
+  "fixedSelections": {}
+}
