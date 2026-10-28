@@ -40,16 +40,20 @@
       "completed_requests": 705
     },
     "firms": {
-      "status": "sample_only",
-      "complete": false,
+      "status": "candidates_ready",
+      "complete": true,
       "source_url": "https://www.data.go.kr/data/15057636/openapi.do",
       "required_env": "GG_OPEN_API_KEY",
       "review_status": "candidate_only",
-      "checked_at": "2026-10-28T02:12:14.783Z",
-      "last_success_at": "2026-10-28T02:12:14.783Z",
-      "retrieved_count": 5,
+      "checked_at": "2026-10-28T10:00:07.837Z",
+      "last_success_at": "2026-10-28T10:00:07.837Z",
+      "method": "api",
+      "retrieved_count": 3419,
       "source_total": 3421,
-      "sample_count": 5
+      "raw_count": 3421,
+      "quarantined_count": 2,
+      "normalization_complete": false,
+      "scope_basis": "raw_response_rows_collected"
     },
     "buildings": {
       "status": "candidates_ready",
@@ -85,5 +89,5 @@
       }
     }
   },
-  "checked_at": "2026-10-28T05:30:42.700Z"
+  "checked_at": "2026-10-28T10:00:07.837Z"
 }

@@ -15,7 +15,7 @@ last_modified_by: yunze
 |---|---|---|
 | 나이스 학교기본정보 | 인증 조회 2,667행 수신, 2,660행 정규화·7행 식별 검토 보류 | 현재 키 발급·조회 완료. 사업과의 학교 동일성 대조 필요 |
 | 학교알리미 | 705개 인증 요청 완료, 응답 12,740행·정규화 12,736행·분류 보류 4행 | 현재 키 발급·조회 완료. 학교별 공시항목·동일성 대조 필요 |
-| 경기데이터드림 사무소 | 무인증 표본 5행 수신, PASS 본인인증 완료·가입 정보입력 단계 | 가입 완료 후 `GG_OPEN_API_KEY` 발급 |
+| 경기데이터드림 사무소 | 키 발급·인증 전체 조회 완료 · 응답 3,421행·정규화 3,419행·중복 보류 2행 | 사무소 후보 동일성·중복 원문 검토. 자료 기준일은 미제공 |
 | 건축HUB 건축물대장 | 키 발급·활용신청 승인, 학교 2곳의 2필지 인증 조회 완료 · 후보 3행 | 학교·동 검토와 사용승인일 누락 보완. 추가 조회는 확인된 지번 필요 |
 | KOSIS 인구 | 공식 대량자료 다운로드로 31개 시·군·6–17세·3개 12월 시점의 1,116행 수집 | 파일 방식은 키 없이 재실행 가능. 인증 API 방식의 키는 미발급 |
 
@@ -60,13 +60,15 @@ npm run data:connect -- schoolinfo --year 2025
 
 [경기데이터드림 발급 안내](https://data.gg.go.kr/portal/openapi/usagePage.do)에서 인증키를 발급받고 `.env`의 `GG_OPEN_API_KEY`에 저장합니다. [건축사 사무소 현황](https://www.data.go.kr/data/15057636/openapi.do)의 API 이름은 `Buildofc`입니다.
 
-PASS 본인인증 완료와 회원가입 3단계 정보입력 화면 진입을 확인했습니다. 계정 생성과 인증키 발급은 아직 완료되지 않았습니다. 확인한 응답은 키 없는 표본 5행이고 전체 사무소 조회 완료로 표시하지 않습니다.
+현재 작업에서는 회원가입과 인증키 발급·로컬 저장을 마치고, 31개 시·군을 포함하는 전체 응답 3,421행을 인증 조회했습니다. 첫 페이지의 같은 원문 2행은 하나를 임의로 남기지 않고 둘 다 비공개 `firm_quarantine`에 보존했으며, 나머지 3,419행을 정규화했습니다. 원시 응답 수집은 `scope: complete`, `scope_basis: raw_response_rows_collected`이고 중복 검토가 남아 `normalization_complete: false`입니다.
 
 ```powershell
 npm run data:connect -- firms
 ```
 
 이름·주소·신고 구분을 수집합니다. 사업자번호·홈페이지·현재 영업 상태는 제공하지 않습니다. 경기 학교를 설계한 서울 소재 업체는 빠질 수 있습니다. 이름 후보는 주소와 등록정보를 대조하기 전까지 동일 사무소로 확정하지 않습니다.
+
+작품집 사무소 76곳 중 단일 이름 후보는 17곳, 복수 후보는 2곳이고, 검수 완료는 0곳입니다. 정규화 미완료 상태에서 후보가 없는 나머지 57곳은 `not_searched`로 유지합니다. 전체 응답을 받았다는 이유로 미연결을 확정하거나 격리된 자료를 무시하지 않습니다. 정규화한 3,419행의 `data_as_of`는 모두 미제공이므로 실행일을 자료 기준일로 채우지 않습니다.
 
 ## 4. 건물 연령
 
@@ -146,8 +148,12 @@ npm run data:connect -- status
 npm run data:connect -- publish-status
 ```
 
-수집 결과는 `data/private/api-connections.json`에 모입니다. `school_registry`·`school_matches`·`school_quarantine`, `schoolinfo_records`·`schoolinfo_quarantine`·요청 기록, `firm_matches`, `building_candidates`, `population_records`와 출처 기록을 검토합니다. 전용 저장소에 보관하므로 대규모 학교 목록을 기존 1,000행 제한 Snapshot에 무리하게 넣지 않습니다. 한 기관 실패 시 다른 기관을 계속 처리하며, 해당 기관의 이전 성공 데이터는 보존하고 최신 실패 상태를 따로 기록합니다. 키/추가 설정 부족은 종료코드 2, 요청 실패는 1입니다. `all`은 인증 API 경로를 사용하므로 경기 사무소·KOSIS 키가 없으면 해당 기관의 설정 부족을 표시하며, KOSIS 파일 방식은 위의 별도 명령으로 실행합니다.
+수집 결과는 `data/private/api-connections.json`에 모입니다. `school_registry`·`school_matches`·`school_quarantine`, `schoolinfo_records`·`schoolinfo_quarantine`·요청 기록, `firm_matches`·`firm_quarantine`, `building_candidates`, `population_records`와 출처 기록을 검토합니다. 전용 저장소에 보관하므로 대규모 학교 목록을 기존 1,000행 제한 Snapshot에 무리하게 넣지 않습니다. 한 기관 실패 시 다른 기관을 계속 처리하며, 해당 기관의 이전 성공 데이터는 보존하고 최신 실패 상태를 따로 기록합니다. 키/추가 설정 부족은 종료코드 2, 요청 실패는 1입니다. `all`은 인증 API 경로를 사용하므로 현재 미발급인 KOSIS 키의 설정 부족을 표시하며, KOSIS 파일 방식은 위의 별도 명령으로 실행합니다.
 
 `publish-status`는 `public/official-enrichment.json`에 **허용한 상태 필드만** 기록합니다. 나이스의 응답·정규화·보류 건수는 공개하지만 격리 원문과 사유, 전체 응답과 연결 후보는 공개하지 않습니다. 기존의 이 파일을 사용하는 별도 후보 공개 작업이 있었다면 해당 후보 배열은 이 명령의 출력에 포함되지 않습니다. 이 명령 자체로 GitHub에 push하거나 사이트를 배포하지 않습니다. 자동 정기 실행도 아직 설정하지 않았습니다.
 
 다음 단계는 미수집 기관·필지의 조회 → 학교/사무소 동일성 대조와 날짜 누락 검토 → 검토한 엔터티와 출처 연결 → 학생·시설·인구 비교 화면입니다. 인증키 등록이나 공식 파일 수집만으로 작품집의 누락 태그·학교 연결·건물 연령이 자동 확정되는 것은 아닙니다.
+
+구현 통합은 [#43](https://github.com/yunzecho-eng/school-design-trends/issues/43), 식별·중복·결측 후속 검토는 [#44](https://github.com/yunzecho-eng/school-design-trends/issues/44)에서 관리합니다. 실제 연결과 건물 사용승인일 검수가 남은 [#40](https://github.com/yunzecho-eng/school-design-trends/issues/40)은 완료 처리하지 않습니다.
+
+현재 작업 브랜치의 최종 로컬 테스트는 270개 통과·실패 0이며, 파일 121개를 설정된 인증키 4개와 대조한 값 노출 검사도 통과했습니다. 이는 병합이나 GitHub Pages 배포 완료를 뜻하지 않습니다. [실행 범위와 검증 기록](API_CONNECTION_VERIFICATION.md)

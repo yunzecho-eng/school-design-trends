@@ -24,6 +24,19 @@ test('public status is an allowlist and cannot publish credentials, records, cus
   assert.equal(JSON.stringify(state), original);
 });
 
+test('firm raw collection and unresolved duplicate records stay separate in public status', () => {
+  const state=createConnectionState();
+  state.services.firms={...successful,raw_count:7,retrieved_count:5,quarantined_count:2,normalization_complete:false,scope_basis:'raw_response_rows_collected'};
+  state.firm_quarantine=[{raw:'PRIVATE-ROW'}];
+  const result=publicConnectionState(state);
+  assert.equal(result.services.firms.raw_count,7);
+  assert.equal(result.services.firms.quarantined_count,2);
+  assert.equal(result.services.firms.normalization_complete,false);
+  assert.doesNotMatch(JSON.stringify(result),/PRIVATE|firm_quarantine/);
+  assert.deepEqual(publicConnectionState(result),result);
+  assert.match(connectionText(result.services.firms,'firms'),/응답 7행 · 정규화 5행 · 식별 검토 보류 2행 · 사무소·사업 연결 검토 전/);
+});
+
 test('latest failed attempt overrides an older success and its counts without losing last-success time', () => {
   const state = createConnectionState();
   state.services.neis = {...successful, last_attempt: {status: 'error', checked_at: '2026-10-28T03:00:00.000Z', message: 'SECRET'}};

@@ -267,6 +267,39 @@ test('CLI stores quarantined NEIS rows privately and publishes only consistent c
   await f.noNetwork();
 });
 
+test('CLI stores the complete firm registry privately while matching never confirms identity', async t => {
+  const f = await fixture(t);
+  await writeFile(join(f.root, 'data/goe-annual.snapshot.json'), JSON.stringify({firms:[{firm_id:'firm-1',name:'PRIVATE-사무소'},{firm_id:'firm-2',name:'PRIVATE-중복사무소'}]}));
+  const rows = [{OFC_NM:'PRIVATE-사무소',SIGUN_CD:'41110',SIGUN_NM:'수원시',REFINE_ROADNM_ADDR:'PRIVATE-주소'},
+    {OFC_NM:'PRIVATE-중복사무소',SIGUN_CD:'41110',SIGUN_NM:'수원시'},
+    {OFC_NM:'PRIVATE-중복사무소',SIGUN_CD:'41110',SIGUN_NM:'수원시'},
+    {OFC_NM:'PRIVATE-다른사무소',SIGUN_CD:'41110',SIGUN_NM:'수원시'}];
+  await writeFile(join(f.root, 'network-guard.mjs'), `globalThis.fetch=async (input, options)=>{
+    const url=new URL(input);
+    if(url.origin!=='https://openapi.gg.go.kr'||url.pathname!=='/Buildofc'||options.redirect!=='error')throw new Error('UNEXPECTED-MOCK-REQUEST');
+    return {ok:true,json:async()=>({Buildofc:[{head:[{list_total_count:4},{RESULT:{CODE:'INFO-000'}}]},{row:${JSON.stringify(rows)}}]})};
+  };`);
+  const result=f.run(['firms'],{GG_OPEN_API_KEY:'SECRET-TEST-ONLY'});
+  assert.equal(result.status,0,result.stderr);
+  assert.doesNotMatch(result.stdout+result.stderr,/PRIVATE|SECRET/);
+  const state=await f.readState();
+  assert.equal(state.firm_registry.length,2);
+  assert.equal(state.services.firms.retrieved_count,2);
+  assert.equal(state.services.firms.raw_count,4);
+  assert.equal(state.services.firms.quarantined_count,2);
+  assert.equal(state.services.firms.normalization_complete,false);
+  assert.deepEqual(state.firm_quarantine.map(q=>q.raw),rows.slice(1,3));
+  assert.equal(state.firm_matches[0].match_status,'candidate');
+  assert.equal(state.firm_matches[0].verified,false);
+  assert.equal(state.firm_matches[1].match_status,'not_searched');
+  assert.equal(f.run(['publish-status']).status,0);
+  const publicText=await readFile(join(f.root,'public/official-enrichment.json'),'utf8');
+  assert.doesNotMatch(publicText,/PRIVATE|SECRET|firm_registry|firm_matches|firm_quarantine|identical_duplicate/);
+  assert.equal(JSON.parse(publicText).services.firms.retrieved_count,2);
+  assert.equal(JSON.parse(publicText).services.firms.raw_count,4);
+  assert.equal(JSON.parse(publicText).services.firms.quarantined_count,2);
+});
+
 test('CLI building collection preserves missing dates privately and publishes truthful date coverage', async t => {
   const f = await fixture(t);
   const parcel = {school_id: 'PRIVATE-SCHOOL', sigunguCd: '41410', bjdongCd: '10100', platGbCd: '0', bun: '0795', ji: '0004',

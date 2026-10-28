@@ -68,7 +68,7 @@ export function publicConnectionState(input) {
       }
       // 학교 API는 원시 응답 수집 완료와 학교 식별자 정규화 완료가 다르다.
       // 원문·격리 사유는 비공개로 남기고 서로 일치하는 건수만 공개한다.
-      if (['neis', 'schoolinfo'].includes(kind) && validCount(source.raw_count) && validCount(source.quarantined_count) &&
+      if (['neis', 'schoolinfo', 'firms'].includes(kind) && validCount(source.raw_count) && validCount(source.quarantined_count) &&
           validCount(source.retrieved_count) && source.raw_count === source.retrieved_count + source.quarantined_count) {
         target.raw_count = source.raw_count;
         target.quarantined_count = source.quarantined_count;

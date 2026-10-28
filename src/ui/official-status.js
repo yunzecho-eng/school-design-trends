@@ -1,7 +1,7 @@
 import {el, safeUrl} from './dom.js';
 import {CONNECTIONS, STATUS_LABELS, publicConnectionState} from '../integrations/connection-state.js';
 
-export function connectionText(service) {
+export function connectionText(service, kind) {
   if (!service) return '연결 상태 미확인';
   const count = service.retrieved_count ?? service.sample_count;
   const label = Number.isSafeInteger(count) && count >= 0 ? `${count}건` : '건수 미확인';
@@ -13,7 +13,7 @@ export function connectionText(service) {
     const counts = `응답 ${format(service.raw_count)}행 · 정규화 ${format(service.retrieved_count)}행 · 식별 검토 보류 ${format(service.quarantined_count)}행`;
     if (service.status === 'sample_only') return `시험 ${counts} · 전체 조회 아님`;
     if (service.status === 'subset_only') return `선택 지역 ${counts} · 전체 조회 아님 · 연결 검토 전`;
-    return `${counts} · 학교·사업 연결 검토 전`;
+    return `${counts} · ${kind === 'firms' ? '사무소·사업' : '학교·사업'} 연결 검토 전`;
   }
   if (service.status === 'sample_only') return `시험 응답 ${label} · 전체 조회 아님`;
   if (service.status === 'subset_only') return `선택 지역 ${label} 조회 · 전체 조회 아님 · 연결 검토 전`;
@@ -36,7 +36,7 @@ export function renderConnections(container, enrichment) {
     const service = valid ? state.services[kind] : null;
     const buildingCoverage = kind === 'buildings' ? buildingCoverageText(service) : null;
     return el('article', {class: 'api-connection-card'}, [el('h3', {}, item.title),
-      el('p', {class: 'api-state'}, connectionText(service)), el('p', {}, item.purpose),
+      el('p', {class: 'api-state'}, connectionText(service, kind)), el('p', {}, item.purpose),
       buildingCoverage ? el('p', {class: 'small'}, buildingCoverage) : null,
       service?.selection ? el('small', {}, `${service.selection.municipalities}개 시·군 · ${service.selection.months.join(', ')} · 연령별 셀 수`) : null,
       service?.geography ? el('small', {}, `현재 코드표 ${service.geography.queried_districts}/${service.geography.official_sgg_count}개 시·군·구 · 과거 행정경계 통계와 구분`) : null,
@@ -54,7 +54,7 @@ export function renderConnections(container, enrichment) {
 export function officialStatus(kind, enrichment) {
   const service = enrichment?.schema_version === 'official-enrichment-1' ? publicConnectionState(enrichment).services[kind] : null;
   const title = kind === 'firms' ? '경기도 건축사사무소 공식 정보' : '건물별 사용승인일 연결';
-  const text = connectionText(service);
+  const text = connectionText(service, kind);
   const buildingCoverage = kind === 'buildings' ? buildingCoverageText(service) : null;
   const panel = el('aside',{class:'connection-status'},el('div',{},[el('strong',{},title),el('p',{},text),
     buildingCoverage ? el('p',{class:'small'},buildingCoverage) : null]));

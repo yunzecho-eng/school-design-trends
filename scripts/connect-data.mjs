@@ -90,7 +90,9 @@ async function run() {
       } else if (kind === 'firms') {
         data = await fetchOfficialFirms({key, sample});
         const snapshot = await readJson('data/goe-annual.snapshot.json');
-        rows.firm_matches = matchOfficialFirms(snapshot.firms, data.rows).map(match => sample && match.match_status === 'not_found' ? {...match, match_status: 'not_searched'} : match);
+        rows.firm_registry = data.rows;
+        rows.firm_quarantine = data.quarantine;
+        rows.firm_matches = matchOfficialFirms(snapshot.firms, data.rows).map(match => (sample || data.normalization_complete === false) && match.match_status === 'not_found' ? {...match, match_status: 'not_searched'} : match);
       } else if (kind === 'buildings') {
         const parcels = await readJson(options.parcels);
         if (!Array.isArray(parcels) || !parcels.every(p => p.reviewed === true && typeof p.source_url === 'string' && /^https:\/\//.test(p.source_url))) throw new Error('학교 지번마다 reviewed:true와 대조한 source_url이 필요합니다.');
@@ -121,7 +123,7 @@ async function run() {
         checked_at: checkedAt, last_success_at: checkedAt,
         source_total: ['neis', 'firms'].includes(kind) ? data.total : null,
         retrieved_count: data.rows.length, sample_count: isSample ? data.raw_count ?? data.rows.length : undefined,
-        ...(['neis', 'schoolinfo'].includes(kind) ? {raw_count: data.raw_count, quarantined_count: data.quarantined_count,
+        ...(['neis', 'schoolinfo', 'firms'].includes(kind) ? {raw_count: data.raw_count, quarantined_count: data.quarantined_count,
           normalization_complete: data.normalization_complete, scope_basis: data.scope_basis} : {}),
         queried_parcels: data.queried_parcels, year: kind === 'schoolinfo' ? option('--year') ?? '2025' : undefined,
         ...(kind === 'buildings' ? {approval_date_available_count: data.approval_date_available_count,
