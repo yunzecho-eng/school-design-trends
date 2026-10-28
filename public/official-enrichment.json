@@ -1,644 +1,93 @@
 {
   "schema_version": "official-enrichment-1",
-  "checked_at": "2026-10-19T10:34:22.549Z",
   "services": {
-    "firms": {
-      "status": "sample_only",
-      "complete": false,
-      "source_url": "https://www.data.go.kr/data/15057636/openapi.do",
-      "endpoint": "https://openapi.gg.go.kr/Buildofc",
-      "required_env": "GG_OPEN_API_KEY",
-      "message": "공식 API 시험 5건 확인 · 전체 조회는 인증키 등록 후 가능합니다.",
-      "checked_at": "2026-10-19T10:34:22.549Z",
-      "source_total": 3421,
-      "retrieved_count": 5,
-      "sample_count": 5,
-      "source_date": null,
+    "neis": {
+      "status": "candidates_ready",
+      "complete": true,
+      "source_url": "https://open.neis.go.kr/portal/data/service/selectServicePage.do?infId=OPEN17020190531110010104913&infSeq=2",
+      "required_env": "NEIS_API_KEY",
       "review_status": "candidate_only",
-      "limitations": [
-        "이름만 비교한 후보입니다. 동일 사무소 확정·당선 근거로 쓰지 않습니다.",
-        "경기도 소재 사무소 자료이며 다른 시도 업체를 포함하지 않습니다.",
-        "사업자번호·홈페이지·신고번호·영업상태는 이 API에서 제공하지 않습니다."
-      ]
+      "checked_at": "2026-10-28T05:09:48.662Z",
+      "last_success_at": "2026-10-28T05:09:48.662Z",
+      "retrieved_count": 2660,
+      "source_total": 2667,
+      "raw_count": 2667,
+      "quarantined_count": 7,
+      "normalization_complete": false,
+      "scope_basis": "raw_response_rows_collected"
+    },
+    "schoolinfo": {
+      "status": "candidates_ready",
+      "complete": true,
+      "source_url": "https://www.schoolinfo.go.kr/ng/go/pnnggo_a01_m0.do",
+      "required_env": "SCHOOLINFO_API_KEY",
+      "review_status": "candidate_only",
+      "checked_at": "2026-10-28T05:10:51.216Z",
+      "last_success_at": "2026-10-28T05:10:51.216Z",
+      "retrieved_count": 12736,
+      "raw_count": 12740,
+      "quarantined_count": 4,
+      "normalization_complete": false,
+      "scope_basis": "raw_response_rows_collected",
+      "year": "2025",
+      "geography": {
+        "boundary_basis": "schoolinfo_current_query_codes",
+        "codes_checked_on": "2026-10-28",
+        "queried_districts": 47,
+        "official_sgg_count": 47
+      },
+      "planned_requests": 705,
+      "completed_requests": 705
+    },
+    "firms": {
+      "status": "candidates_ready",
+      "complete": true,
+      "source_url": "https://www.data.go.kr/data/15057636/openapi.do",
+      "required_env": "GG_OPEN_API_KEY",
+      "review_status": "candidate_only",
+      "checked_at": "2026-10-28T10:00:07.837Z",
+      "last_success_at": "2026-10-28T10:00:07.837Z",
+      "method": "api",
+      "retrieved_count": 3419,
+      "source_total": 3421,
+      "raw_count": 3421,
+      "quarantined_count": 2,
+      "normalization_complete": false,
+      "scope_basis": "raw_response_rows_collected"
     },
     "buildings": {
-      "status": "key_and_parcel_required",
-      "complete": false,
+      "status": "candidates_ready",
+      "complete": true,
       "source_url": "https://www.data.go.kr/data/15134735/openapi.do",
-      "endpoint": "https://apis.data.go.kr/1613000/BldRgstHubService/getBrTitleInfo",
       "required_env": "DATA_GO_KR_SERVICE_KEY",
-      "message": "건물별 사용승인일 조회에는 인증키와 확인된 학교 지번이 필요합니다."
+      "review_status": "candidate_only",
+      "checked_at": "2026-10-28T05:30:42.700Z",
+      "last_success_at": "2026-10-28T05:30:42.700Z",
+      "method": "api",
+      "retrieved_count": 3,
+      "queried_parcels": 2,
+      "approval_date_available_count": 0,
+      "approval_date_missing_count": 3
+    },
+    "kosis": {
+      "status": "candidates_ready",
+      "complete": true,
+      "source_url": "https://kosis.kr/statisticsList/mass/mass_list.jsp?list_id=A_7&org_id=101&process=statHtml&tbl_id=DT_1B04006&vw_cd=MT_ZTITLE",
+      "review_status": "candidate_only",
+      "checked_at": "2026-10-28T05:29:36.789Z",
+      "last_success_at": "2026-10-28T05:29:36.789Z",
+      "method": "official_bulk_download",
+      "retrieved_count": 1116,
+      "selection": {
+        "municipalities": 31,
+        "ages": "6–17",
+        "months": [
+          "202312",
+          "202412",
+          "202512"
+        ]
+      }
     }
   },
-  "firm_matches": [
-    {
-      "firm_id": "goe-firm-001",
-      "name": "(주)해마종합건축사사무소",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-002",
-      "name": "(주)건축사사무소 학건축",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-003",
-      "name": "(주)종합건축사사무소 이림",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-004",
-      "name": "(주)케이앤티종합건축사사무소",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-005",
-      "name": "(주)디엔비건축사사무소",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-006",
-      "name": "(주)건축사사무소에스에이",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-007",
-      "name": "(주)한길건축사사무소",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-008",
-      "name": "(주)종합건축사사무소 림",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-009",
-      "name": "주식회사 유에이디건축사사무소",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-010",
-      "name": "(주)건축사사무소 에스파스",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-011",
-      "name": "(주)인오건축사사무소",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-012",
-      "name": "(주)에이플러스건축사사무소",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-013",
-      "name": "(주)종합건축사사무소 선기획",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-014",
-      "name": "(주)에이오에이건축사사무소",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-015",
-      "name": "(주)시상종합건축사사무소",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-016",
-      "name": "(주)한들종합건축사사무소",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-017",
-      "name": "(주)건축사사무소 엔아이피",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-018",
-      "name": "(주)제이디에스종합건축사사무소",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-019",
-      "name": "(주)다우스차건축사사무소",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-020",
-      "name": "비스타건축사사무소",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-021",
-      "name": "주식회사 씨에이엘건축사사무소",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-022",
-      "name": "(주)에이더스종합건축사사무소",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-023",
-      "name": "가치지음 건축사사무소",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-024",
-      "name": "인포멀건축사사무소(주)",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-025",
-      "name": "소노건축사사무소",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-026",
-      "name": "유오에이건축사사무소",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-027",
-      "name": "필단건축사사무소",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-028",
-      "name": "칸그룹 건축사사무소(주)",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-029",
-      "name": "(주)삼원건축사사무소",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-030",
-      "name": "(주)우인엔지니어링건축사사무소",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-031",
-      "name": "(주)정일엔지니어링종합건축사사무소",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-032",
-      "name": "건축사사무소 라미",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-033",
-      "name": "(주)누아건축사사무소",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-034",
-      "name": "(주)원아키텍츠건축사사무소",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-035",
-      "name": "(주)스튜디오이즘건축사사무소",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-036",
-      "name": "건축사사무소상상",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-037",
-      "name": "동윤건축사사무소",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-038",
-      "name": "주식회사 시상종합건축사사무소",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-039",
-      "name": "(주)건축사사무소 원",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-040",
-      "name": "(주)새로건축사사무소",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-041",
-      "name": "중원건축사사무소",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-042",
-      "name": "(주)종합건축사사무소 참",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-043",
-      "name": "건축사사무소 오앤에이",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-044",
-      "name": "(주)종합그룹환경건축사사무소",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-045",
-      "name": "(주)에스파스에이씨엠건축사사무소",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-046",
-      "name": "(주)디엔비파트너스건축사사무소",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-047",
-      "name": "(주)건축사사무소 에스에이",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-048",
-      "name": "해마그룹건축사사무소",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-049",
-      "name": "(주)정다움건축사사무소",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-050",
-      "name": "건축사사무소 QUAD",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-051",
-      "name": "(주)건축사사무소 본시",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-052",
-      "name": "(주)건축사사무소토담21",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-053",
-      "name": "(주)종합건축사사무소림",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-054",
-      "name": "(주)아리건축사사무소",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-055",
-      "name": "(주)건축사사무소 유피이엠",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-056",
-      "name": "(주)세이브건축사사무소",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-057",
-      "name": "TOD건축사사무소",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-058",
-      "name": "건축사사무소 재인",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-059",
-      "name": "(주)라온엔지니어링건축사사무소",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-060",
-      "name": "건축사사무소 이일공",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-061",
-      "name": "(주)건축사사무소이곳",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-062",
-      "name": "건축사사무소 필록",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-063",
-      "name": "(주)건축사사무소 하이어",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-064",
-      "name": "(주)종합건축사사무소태건",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-065",
-      "name": "바른돌건축사사무소",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-066",
-      "name": "건축사사무소 소담",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-067",
-      "name": "와이디자인건축사사무소",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-068",
-      "name": "(주)건축사사무소 주:우",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-069",
-      "name": "어반랩건축사사무소",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-070",
-      "name": "(주)건축사사무소엔아이피",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-071",
-      "name": "(주)슬로프트건축사사무소",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-072",
-      "name": "주식회사 윤석민건축사사무소",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-073",
-      "name": "(주)위파트너스건축사사무소",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-074",
-      "name": "(주)건축사사무소 삼곱하기삼",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-075",
-      "name": "주식회사 건축사사무소 씨마",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    },
-    {
-      "firm_id": "goe-firm-076",
-      "name": "(주)케이앤티 종합건축사사무소",
-      "match_status": "not_searched",
-      "match_basis": "normalized_name_only",
-      "verified": false,
-      "candidates": []
-    }
-  ],
-  "building_candidates": []
+  "checked_at": "2026-10-28T10:00:07.837Z"
 }

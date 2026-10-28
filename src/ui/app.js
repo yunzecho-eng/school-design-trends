@@ -6,6 +6,7 @@ import { renderYearTrends } from './year-trends.js';
 import { renderFirms, renderBuildings, renderTopics, openProjectDialog } from './details.js';
 import { serializeCsv, serializeMarkdown, downloadExport } from './export.js';
 import {GYEONGGI_CITIES} from '../domain/gyeonggi.js';
+import {renderConnections} from './official-status.js';
 
 const $ = id => document.getElementById(id);
 let provider;
@@ -195,6 +196,8 @@ function paint() {
     $('error').hidden = true;
     $('loading-help').hidden = true;
     const isDemo = provider.snapshot.is_demo;
+    $('api-connections').hidden = isDemo;
+    if (!isDemo) renderConnections($('api-connections'), provider.officialEnrichment);
     $('data-mode-title').textContent = isDemo ? '가상 예시' : '경기도 설계공모 아카이브';
     $('data-mode-description').textContent = isDemo ? '화면 기능 확인용 자료입니다.' : '2023–2025 작품집 수록 사례 · 원문 검수 전';
     $('scope').textContent = `${isDemo ? '가상 ' : ''}자료 기준 ${provider.snapshot.as_of} · ${dateLabels[lastFilters.dateBasis]} 기준 · ${periodLabel()}`;

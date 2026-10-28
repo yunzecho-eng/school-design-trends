@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {normalizeFirmName, normalizeOfficialFirm, matchOfficialFirms, parseGgFirmResponse, parseBuildingResponse,
-  validateParcel, normalizeOfficialBuilding, fetchOfficialFirms, fetchOfficialBuildings} from '../../src/integrations/official-data.js';
+  validateParcel, normalizeOfficialBuilding, buildingDateCoverage, fetchOfficialFirms, fetchOfficialBuildings} from '../../src/integrations/official-data.js';
 
 const office = (name = '(주)예시건축사사무소', code = '41110') => ({OFC_NM: name, SIGUN_CD: code, SIGUN_NM: '수원시', REFINE_ROADNM_ADDR: '경기도 수원시 예시로 1', DATA_STD_DE: null});
 const gg = (rows, total = rows.length) => ({Buildofc: [{head: [{list_total_count: total}, {RESULT: {CODE: 'INFO-000'}}]}, {row: rows}]});
@@ -87,6 +87,78 @@ test('full office pagination completes only when its row count equals total', as
   await assert.rejects(fetchOfficialFirms({key: 'test', fetchImpl: async () => response(changed.shift())}), /총건수/);
 });
 
+test('office collection rejects reordered whole pages but quarantines every member of individual duplicate groups', async () => {
+  const a = {...office('A'), metadata: {left: 1, right: {one: 1, two: 2}}};
+  const aReordered = {metadata: {right: {two: 2, one: 1}, left: 1}, ...Object.fromEntries(Object.entries(office('A')).reverse())};
+  const b = office('B'), c = office('C');
+  const repeated = [gg([a, b], 4), gg([b, aReordered], 4)];
+  await assert.rejects(fetchOfficialFirms({key: 'test', fetchImpl: async () => response(repeated.shift())}), /반복/);
+  const overlapping = [gg([a, b], 4), gg([aReordered, c], 4)];
+  const result = await fetchOfficialFirms({key: 'test', fetchImpl: async () => response(overlapping.shift())});
+  assert.equal(result.scope, 'complete');
+  assert.equal(result.scope_basis, 'raw_response_rows_collected');
+  assert.equal(result.total, 4);
+  assert.equal(result.raw_count, 4);
+  assert.equal(result.rows.length, 2);
+  assert.equal(result.quarantined_count, 2);
+  assert.equal(result.normalization_complete, false);
+  assert.deepEqual(result.rows.map(row => row.name), ['B', 'C']);
+  assert.deepEqual(result.quarantine.map(row => row.raw), [a, aReordered]);
+  assert.deepEqual(result.quarantine.map(row => [row.source_row, row.source_page, row.row_in_page]), [[1, 1, 1], [3, 2, 1]]);
+  assert.ok(result.quarantine.every(row => row.reasons.includes('duplicate_raw_record') && !Object.hasOwn(row, 'fingerprint')));
+  for (const sample of [false, true]) {
+    const duplicate = await fetchOfficialFirms({key: 'test', sample, fetchImpl: async () => response(gg([a, aReordered], sample ? 3421 : 2))});
+    assert.equal(duplicate.scope, sample ? 'sample_only' : 'complete');
+    assert.equal(duplicate.raw_count, 2);
+    assert.equal(duplicate.quarantined_count, 2);
+    assert.equal(duplicate.rows.length, 0);
+    assert.equal(duplicate.normalization_complete, false);
+    assert.deepEqual(duplicate.quarantine.map(row => row.raw), [a, aReordered]);
+  }
+  // Distinct addresses for the same office name must remain distinct candidates.
+  const sameName = [{...office('A'), REFINE_ROADNM_ADDR: '경기도 수원시 1'}, {...office('A'), REFINE_ROADNM_ADDR: '경기도 수원시 2'}];
+  const distinct = await fetchOfficialFirms({key: 'test', fetchImpl: async () => response(gg(sameName))});
+  assert.equal(distinct.scope, 'complete');
+  assert.equal(distinct.normalization_complete, true);
+  assert.equal(distinct.raw_count, 2);
+  assert.equal(distinct.quarantined_count, 0);
+  assert.deepEqual(distinct.quarantine, []);
+  assert.equal(matchOfficialFirms([{firm_id: 'a', name: 'A'}], distinct.rows)[0].match_status, 'ambiguous');
+});
+
+test('firm raw collection never uses quarantine to conceal malformed unique source rows', async () => {
+  for (const invalid of [office('', '41110'), office('Invalid', '11680')]) {
+    await assert.rejects(fetchOfficialFirms({key: 'test', fetchImpl: async () => response(gg([office(), {...office()}, invalid]))}), /OFC_NM|시군코드/);
+  }
+});
+
+test('sample scope cannot hide inconsistent totals or an empty nonempty source', async () => {
+  for (const sample of [true, false]) {
+    await assert.rejects(fetchOfficialFirms({key: 'test', sample, fetchImpl: async () => response(gg([office()], 0))}), /총건수/);
+    await assert.rejects(fetchOfficialFirms({key: 'test', sample, fetchImpl: async () => response(gg([], 2))}), /총건수/);
+    const empty = await fetchOfficialFirms({key: 'test', sample, fetchImpl: async () => response(gg([], 0))});
+    assert.equal(empty.scope, sample ? 'sample_only' : 'complete');
+    assert.equal(empty.rows.length, 0);
+  }
+});
+
+test('official authenticated requests reject redirects and sanitize key-bearing transport and JSON failures', async () => {
+  const secret = 'SECRET-KEY-FOR-MOCK';
+  for (const operation of [
+    fetchImpl => fetchOfficialFirms({key: secret, fetchImpl}),
+    fetchImpl => fetchOfficialBuildings({key: secret, parcels: [parcel], fetchImpl}),
+  ]) {
+    for (const failure of ['transport', 'json']) {
+      await assert.rejects(operation(async (url, options) => {
+        assert.equal(options.redirect, 'error');
+        assert.ok(options.signal);
+        if (failure === 'transport') throw new Error(`Redirected private URL: ${url.href}`);
+        return {ok: true, json: async () => { throw new Error(`Invalid private payload ${secret}`); }};
+      }), error => !error.message.includes(secret) && !error.message.includes('https://'));
+    }
+  }
+});
+
 test('building queries require an exact Gyeonggi parcel rather than a school-name guess', () => {
   assert.deepEqual(validateParcel(parcel), parcel);
   assert.throws(() => validateParcel({...parcel, sigunguCd: '11680'}));
@@ -104,6 +176,18 @@ test('building age input uses approval date only and retains unknown, invalid an
     assert.equal(result.use_approval_date, null);
     assert.ok(result.date_issue);
   }
+});
+
+test('building date coverage counts valid useAprDay only and never substitutes opening or creation dates', () => {
+  const records = ['19861019', '', '19860230', '20271019'].map((useAprDay, index) => normalizeOfficialBuilding({
+    ...building(), mgmBldrgstPk: `PK-${index}`, useAprDay, FOND_YMD: '19200401', crtnDay: '20220909',
+  }, parcel, '2026-10-28T00:00:00Z'));
+  assert.deepEqual(buildingDateCoverage(records), {approval_date_available_count: 1, approval_date_missing_count: 3});
+  assert.deepEqual(buildingDateCoverage(records.slice(1)), {approval_date_available_count: 0, approval_date_missing_count: 3});
+  assert.deepEqual(buildingDateCoverage([]), {approval_date_available_count: 0, approval_date_missing_count: 0});
+  assert.deepEqual(buildingDateCoverage([{...records[0], date_basis: 'FOND_YMD'}, {...records[0], date_issue: '검토 필요'}]),
+    {approval_date_available_count: 0, approval_date_missing_count: 2});
+  assert.ok(records.every(row => row.verified === false && row.match_status === 'parcel_candidate'));
 });
 
 test('building fetch preserves distinct wings and rejects paging duplication', async () => {

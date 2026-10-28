@@ -26,6 +26,12 @@ const count = value => {
   const number = Number(value);
   return Number.isSafeInteger(number) && number >= 0 ? number : null;
 };
+// API JSON object-key order is not identity. Preserve values and array order,
+// but canonicalize object keys before checking raw rows and page contents.
+const stableJson = value => JSON.stringify(value, function (key, item) {
+  return item && typeof item === 'object' && !Array.isArray(item)
+    ? Object.fromEntries(Object.keys(item).sort().map(name => [name, item[name]])) : item;
+});
 
 export function normalizeFirmName(value) {
   return (text(value) ?? '').normalize('NFKC').toLocaleLowerCase('ko-KR')
@@ -120,9 +126,16 @@ export function normalizeOfficialBuilding(row, parcel, retrievedAt) {
   };
 }
 
+// Count only usable normalized approval dates. Opening/registry-creation dates
+// cannot fill a missing useAprDay, and this does not approve a school/building match.
+export function buildingDateCoverage(records) {
+  const available = records.filter(row => row.date_basis === 'useAprDay' && date(row.use_approval_date) && !row.date_issue).length;
+  return {approval_date_available_count: available, approval_date_missing_count: records.length - available};
+}
+
 async function requestJson(url, fetchImpl) {
   let response;
-  try { response = await fetchImpl(url, {signal: AbortSignal.timeout(25_000)}); }
+  try { response = await fetchImpl(url, {signal: AbortSignal.timeout(25_000), redirect: 'error'}); }
   catch { throw new Error('공식 API 연결에 실패했습니다. 이전 결과를 유지합니다.'); }
   if (!response.ok) throw new Error(`공식 API HTTP ${response.status}: 인증·사용량·서비스 상태를 확인하세요.`);
   try { return await response.json(); } catch { throw new Error('공식 API가 JSON 대신 다른 형식으로 응답했습니다. 이전 결과를 유지합니다.'); }
@@ -130,18 +143,38 @@ async function requestJson(url, fetchImpl) {
 
 export async function fetchOfficialFirms({key, sample = false, fetchImpl = fetch, maxPages = 100} = {}) {
   if (!sample && !text(key)) throw new Error('GG_OPEN_API_KEY가 필요합니다. 키 없는 시험은 --sample을 사용하세요.');
-  const all = []; let total = null; const seenPages = new Set();
+  const collected = []; let total = null; const seenPages = new Set(), rowCounts = new Map();
+  const finish = () => {
+    const rows = [], quarantine = [];
+    for (const entry of collected) {
+      if (rowCounts.get(entry.fingerprint) > 1) {
+        // There is no stable office ID. Keep every member of an identical raw
+        // group for review rather than choosing one or inventing an office ID.
+        const {fingerprint, ...source} = entry;
+        quarantine.push({...source, reasons: ['duplicate_raw_record']});
+      } else rows.push(normalizeOfficialFirm(entry.raw));
+    }
+    return {rows, total, scope: sample ? 'sample_only' : 'complete', raw_count: collected.length,
+      quarantined_count: quarantine.length, quarantine, normalization_complete: quarantine.length === 0,
+      scope_basis: 'raw_response_rows_collected'};
+  };
   for (let page = 1; page <= maxPages; page++) {
     const url = new URL(OFFICIAL_SOURCES.firms.endpoint);
     url.search = new URLSearchParams({...(!sample ? {KEY: key} : {}), Type: 'json', pIndex: String(page), pSize: sample ? '5' : '1000'});
     const parsed = parseGgFirmResponse(await requestJson(url, fetchImpl));
     if (total !== null && total !== parsed.total) throw new Error('수집 중 공식 사무소 총건수가 바뀌었습니다. 다시 실행하세요.');
     total = parsed.total;
-    const signature = JSON.stringify(parsed.rows);
+    const fingerprints = parsed.rows.map(stableJson);
+    const signature = JSON.stringify([...fingerprints].sort());
     if (seenPages.has(signature)) throw new Error('API가 같은 페이지를 반복했습니다. 인증·페이지 처리를 확인하세요.');
-    seenPages.add(signature); all.push(...parsed.rows.map(normalizeOfficialFirm));
-    if (sample || all.length === total) return {rows: all, total, scope: sample ? 'sample_only' : 'complete'};
-    if (!parsed.rows.length || all.length > total) throw new Error('공식 사무소 응답 건수가 총건수와 일치하지 않습니다.');
+    seenPages.add(signature);
+    parsed.rows.forEach((raw, index) => {
+      const fingerprint = fingerprints[index];
+      rowCounts.set(fingerprint, (rowCounts.get(fingerprint) ?? 0) + 1);
+      collected.push({source_row: collected.length + 1, source_page: page, row_in_page: index + 1, raw, fingerprint});
+    });
+    if ((!parsed.rows.length && collected.length !== total) || collected.length > total) throw new Error('공식 사무소 응답 건수가 총건수와 일치하지 않습니다.');
+    if (sample || collected.length === total) return finish();
   }
   throw new Error('공식 사무소 수집의 안전 페이지 한도를 넘었습니다.');
 }
