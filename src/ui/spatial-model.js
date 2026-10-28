@@ -60,9 +60,11 @@ export function renderSpatialModel(container, {
     initialized=true;
     content.append(el('p',{class:'spatial-scope'},scopeLabel),
       el('p',{class:'spatial-disclaimer'},'가상 학교 개념도 · 실제 사례의 건물 형상과 다릅니다.'));
-    topics=el('div',{class:'spatial-topic-controls','aria-label':'공간으로 살펴볼 키워드'});
+    topics=el('div',{class:'spatial-topic-controls',role:'group','aria-label':'키워드별 학교 배치 비교'});
     for(const topic of SPATIAL_TOPICS) {
-      const button=el('button',{type:'button','data-topic':topic.id},topic.label);
+      const button=el('button',{type:'button','data-topic':topic.id},[
+        el('strong',{},topic.label),el('span',{},topic.layoutLabel),
+      ]);
       button.addEventListener('click',()=>updateTopic(topic.id));topics.append(button);
     }
     const layout=el('div',{class:'spatial-layout'}),visual=el('div',{class:'spatial-visual'});
@@ -73,7 +75,7 @@ export function renderSpatialModel(container, {
     const rotationValue=el('output',{},`${state.angle}°`);
     const zoom=el('input',{type:'range',min:80,max:130,step:5,value:state.zoom,'aria-label':'공간 모델 확대 비율'});
     const zoomValue=el('output',{},`${state.zoom}%`);
-    const transparency=el('input',{type:'range',min:0,max:100,step:5,value:state.transparency,'aria-label':'공유동과 학습동 내부 투과율'});
+    const transparency=el('input',{type:'range',min:0,max:100,step:5,value:state.transparency,'aria-label':'선택한 공간의 내부 투과율'});
     const transparencyValue=el('output',{},`${state.transparency}%`);
     const exterior=el('button',{type:'button',class:'spatial-action'},'전체 외관');
     const interior=el('button',{type:'button',class:'spatial-action'},'내부 보기');
@@ -85,13 +87,14 @@ export function renderSpatialModel(container, {
     const status=el('p',{class:'sr-only',role:'status','aria-live':'polite'});
     download=el('button',{type:'button',class:'spatial-action'},'보고서용 개념도 저장 (SVG)');
     const downloadStatus=el('p',{class:'small',role:'status'});
+    const alternativeText=el('p');
     const alternative=el('details',{class:'spatial-alternative'},[
       el('summary',{},'그림 대신 공간 설명 읽기'),
-      el('p',{},'두 층의 ㄷ자 교사동 안에 중정과 학습 데크가 있습니다. 앞쪽 한쪽은 별도 출입구를 가진 공유 도서관, 다른 쪽은 이동식 구획을 둔 학습 공용동입니다. 내부 투과를 높이면 두 앞쪽 동의 지붕과 앞벽이 옅어져 가구와 구획을 볼 수 있습니다. 뒤쪽 교사동의 외형은 그대로 유지합니다.'),
-      el('ul',{},SPATIAL_TOPICS.map(topic=>el('li',{},`${topic.label}: ${topic.space}`))),
+      alternativeText,
     ]);
-    visual.append(stage,fallback,controls,el('p',{class:'small'},'내부 투과는 앞쪽 도서관·학습동에 적용됩니다. 0%는 전체 외관, 100%는 내부 구조입니다. 방향키로도 조절할 수 있습니다.'),alternative,download,downloadStatus);
-    layout.append(visual,narrative);content.append(topics,status,layout,evidenceList,
+    visual.append(stage,fallback,controls,el('p',{class:'small'},'내부 투과를 높이면 선택한 공용 공간의 지붕·외벽이 옅어집니다. 주요 교사동은 유지됩니다. 방향키로도 조절할 수 있습니다.'),alternative,download,downloadStatus);
+    layout.append(visual,narrative);content.append(topics,
+      el('p',{class:'spatial-comparison-note'},'같은 부지 크기와 시점에서 배치 3안을 비교합니다. 키워드를 바꾸면 건물 형태와 공간 구성이 함께 달라집니다.'),status,layout,evidenceList,
       el('details',{class:'spatial-credits'},[el('summary',{},'모델 출처 · 이용 조건 · 가정'),
         el('p',{},`${SPATIAL_MODEL.creator} · ${SPATIAL_MODEL.date} · ${SPATIAL_MODEL.model_id}`),
         el('p',{},SPATIAL_MODEL.source),el('p',{},SPATIAL_MODEL.rights),el('p',{},SPATIAL_MODEL.assumptions),
@@ -118,10 +121,12 @@ export function renderSpatialModel(container, {
     drawText=()=>{
       const topic=SPATIAL_TOPICS.find(item=>item.id===state.topic),evidence=spatialEvidence(projects,snapshot,state.topic);
       for(const button of topics.children) button.setAttribute('aria-pressed',String(button.dataset.topic===state.topic));
-      narrative.replaceChildren(el('p',{class:'eyebrow'},'공간 해석'),el('h4',{},topic.space),el('p',{},topic.interpretation),
-        el('details',{class:'spatial-assumptions'},[el('summary',{},'해석의 범위'),el('p',{class:'small'},topic.assumption),
+      alternativeText.textContent=topic.alternative;
+      narrative.replaceChildren(el('p',{class:'eyebrow'},'이 배치의 차이'),el('h4',{},topic.layoutLabel),
+        el('ul',{class:'spatial-design-moves'},topic.designMoves.map(move=>el('li',{},move))),
+        el('details',{class:'spatial-assumptions'},[el('summary',{},'설계 의도 · 해석의 범위'),el('p',{},topic.interpretation),el('p',{class:'small'},topic.assumption),
           el('p',{class:'small'},'가상 개념 모델입니다. 키워드 빈도·학습 효과·미래 수요를 형상에서 추론하지 않습니다.')]));
-      status.textContent=`${topic.label} 공간 강조. 현재 조건의 연결 사업 ${evidence.matches.length}건.`;
+      status.textContent=`${topic.label}: ${topic.layoutLabel} 배치. 현재 조건의 연결 사업 ${evidence.matches.length}건.`;
       evidenceList.replaceChildren(el('h4',{},'현재 조건의 키워드 근거 사례'),
         el('p',{class:'small'},`조회 사업 ${evidence.denominator}건 중 ${topic.label} 기록 ${evidence.matches.length}건. 키워드 분류 근거이며 위 가상 학교 형상의 근거가 아닙니다.`));
       if(snapshot.is_demo) evidenceList.append(el('p',{class:'small'},'가상 자료의 연결 예시입니다. 실제 최근 유행을 나타내지 않습니다.'));
