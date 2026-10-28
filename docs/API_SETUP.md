@@ -156,4 +156,4 @@ npm run data:connect -- publish-status
 
 구현 통합은 [#43](https://github.com/yunzecho-eng/school-design-trends/issues/43), 식별·중복·결측 후속 검토는 [#44](https://github.com/yunzecho-eng/school-design-trends/issues/44)에서 관리합니다. 실제 연결과 건물 사용승인일 검수가 남은 [#40](https://github.com/yunzecho-eng/school-design-trends/issues/40)은 완료 처리하지 않습니다.
 
-현재 작업 브랜치의 최종 로컬 테스트는 270개 통과·실패 0이며, 파일 121개를 설정된 인증키 4개와 대조한 값 노출 검사도 통과했습니다. 이는 병합이나 GitHub Pages 배포 완료를 뜻하지 않습니다. [실행 범위와 검증 기록](API_CONNECTION_VERIFICATION.md)
+[PR #45](https://github.com/yunzecho-eng/school-design-trends/pull/45)의 최종 로컬 테스트는 270개 통과·실패 0이며, 파일 121개를 설정된 인증키 4개와 대조한 값 노출 검사도 통과했습니다. [실행 범위와 검증 기록](API_CONNECTION_VERIFICATION.md)을 참고하세요. 실제 배포 커밋과 공개 화면 확인 결과는 PR #45 댓글에 기록합니다.

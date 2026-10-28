@@ -7,9 +7,9 @@ last_modified_by: yunze
 
 작성·수정: yunze · 2026-10-28
 
-작업 브랜치: `yunze/2026-10-28-official-api-connections`
+구현 브랜치: `yunze/2026-10-28-official-api-connections`
 
-이 문서는 작업 브랜치의 로컬 구현·요청 결과를 기록한다. 이번 변경의 GitHub 병합·push·배포 완료를 의미하지 않는다. 기존 2026-10-19 배포와 193개 테스트 기록은 README의 해당 날짜 항목에 유지한다.
+이 문서는 [PR #45](https://github.com/yunzecho-eng/school-design-trends/pull/45)의 구현과 실제 응답 검증을 기록한다. 기존 2026-10-19 배포와 193개 테스트 기록은 README의 해당 날짜 항목에 유지한다.
 
 구현 통합은 [이슈 #43](https://github.com/yunzecho-eng/school-design-trends/issues/43), 자료의 식별·중복·결측 검토는 [#44](https://github.com/yunzecho-eng/school-design-trends/issues/44)로 나눈다. 수집 성공만으로 학교·사무소 동일성과 건물 날짜가 확정되지 않으므로 기존 [공식 자료 연결 #40](https://github.com/yunzecho-eng/school-design-trends/issues/40)은 열어 둔다.
 
@@ -139,4 +139,4 @@ npm run data:connect -- kosis --bulk --config data/config/kosis-population.examp
 
 이 기록은 개발 검증이며 공동 작업자의 직접 승인 리뷰나 실제 데이터 전수 검수 완료를 뜻하지 않는다.
 
-현재 저장소에는 별도 CI 워크플로가 없다. 위 테스트는 로컬 실행 결과다. GitHub Pages 설정은 `main` 브랜치의 루트(`/`)를 배포하며, 확인한 `built` 상태는 이전 커밋의 배포 결과다. 이번 작업의 병합·배포 성공 근거로 사용하지 않는다.
+현재 저장소에는 별도 CI 워크플로가 없다. 위 테스트는 로컬 실행 결과다. GitHub Pages는 `main` 브랜치의 루트(`/`)를 배포한다. 실제 배포 커밋과 상태, 공개 화면 확인 결과는 [PR #45 댓글](https://github.com/yunzecho-eng/school-design-trends/pull/45)에 별도로 기록한다.
