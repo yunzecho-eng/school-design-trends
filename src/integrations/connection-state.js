@@ -10,7 +10,7 @@ export const CONNECTIONS = Object.freeze({
 export const STATUS_LABELS = Object.freeze({
   key_required: '인증키 필요', key_and_parcel_required: '인증키·학교 지번 필요',
   key_and_config_required: '인증키·통계 조건 필요', parcel_required: '학교 지번 확인 필요',
-  config_required: '통계 조건 확인 필요', sample_only: '시험 응답 확인',
+  config_required: '통계 조건 확인 필요', sample_only: '시험 응답 확인', subset_only: '선택 지역 조회 · 전체 아님',
   candidates_ready: '조회 완료 · 연결 검토 필요', error: '조회 실패 · 재확인 필요',
   not_checked: '연결 상태 미확인',
 });
@@ -27,7 +27,7 @@ export function createConnectionState() {
 export function prerequisite(kind, env, {sample = false, parcels, config} = {}) {
   if (!CONNECTIONS[kind]) throw new Error('지원하지 않는 데이터 종류입니다.');
   if (sample && ['neis', 'schoolinfo', 'firms'].includes(kind)) return null;
-  if (!env[CONNECTIONS[kind].env]?.trim()) return initialStatus(kind);
+  if (!env[CONNECTIONS[kind].env]?.trim()) return kind === 'kosis' && config || kind === 'buildings' && parcels ? 'key_required' : initialStatus(kind);
   if (kind === 'buildings' && !parcels) return 'parcel_required';
   if (kind === 'kosis' && !config) return 'config_required';
   return null;
@@ -53,9 +53,31 @@ export function publicConnectionState(input) {
       target.checked_at = source.last_attempt.checked_at;
     }
     // Counts describe the latest successful request only, never a failed/missing request.
-    if (['sample_only', 'candidates_ready'].includes(target.status)) {
+    if (['sample_only', 'subset_only', 'candidates_ready'].includes(target.status)) {
       for (const key of ['retrieved_count', 'source_total', 'sample_count', 'queried_parcels']) if (validCount(source[key])) target[key] = source[key];
+      // 학교 API는 원시 응답 수집 완료와 학교 식별자 정규화 완료가 다르다.
+      // 원문·격리 사유는 비공개로 남기고 서로 일치하는 건수만 공개한다.
+      if (['neis', 'schoolinfo'].includes(kind) && validCount(source.raw_count) && validCount(source.quarantined_count) &&
+          validCount(source.retrieved_count) && source.raw_count === source.retrieved_count + source.quarantined_count) {
+        target.raw_count = source.raw_count;
+        target.quarantined_count = source.quarantined_count;
+        if (typeof source.normalization_complete === 'boolean') target.normalization_complete = source.normalization_complete && source.quarantined_count === 0;
+        if (source.scope_basis === 'raw_response_rows_collected') target.scope_basis = 'raw_response_rows_collected';
+      }
       if (typeof source.year === 'string' && /^20\d{2}$/.test(source.year)) target.year = source.year;
+      const schoolinfoCodes = source.geography?.sgg_codes;
+      const schoolinfoDistricts = Array.isArray(schoolinfoCodes) && schoolinfoCodes.every(code => typeof code === 'string' && /^41\d{3}$/.test(code)) && new Set(schoolinfoCodes).size === schoolinfoCodes.length
+        ? schoolinfoCodes.length : source.geography?.queried_districts;
+      if (kind === 'schoolinfo' && source.geography?.boundary_basis === 'schoolinfo_current_query_codes' &&
+          validDate(source.geography.codes_checked_on) && source.geography.official_sgg_count === 47 &&
+          validCount(schoolinfoDistricts) && schoolinfoDistricts > 0 && schoolinfoDistricts <= 47) {
+        target.geography = {boundary_basis: 'schoolinfo_current_query_codes', codes_checked_on: source.geography.codes_checked_on,
+          queried_districts: schoolinfoDistricts, official_sgg_count: 47};
+        if (validCount(source.planned_requests) && source.planned_requests <= 705 && source.completed_requests === source.planned_requests) {
+          target.planned_requests = source.planned_requests;
+          target.completed_requests = source.completed_requests;
+        }
+      }
       if (kind === 'kosis' && validCount(source.selection?.municipalities) && Array.isArray(source.selection?.months)) {
         target.selection = {municipalities: source.selection.municipalities, ages: '6–17', months: source.selection.months.filter(m => typeof m === 'string' && /^20\d{2}(0[1-9]|1[0-2])$/.test(m)).slice(0, 36)};
       }

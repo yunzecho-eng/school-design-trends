@@ -1,3 +1,8 @@
+---
+author: yunze
+last_modified_by: yunze
+---
+
 # 공식 API 연결 순서
 
 작성·수정: yunze · 확인일: 2026-10-28
@@ -8,13 +13,13 @@
 
 | API | 실제 연결 확인 | 전체 조회에 필요한 것 |
 |---|---|---|
-| 나이스 학교기본정보 | 무인증 표본 5행 수신 | `NEIS_API_KEY` |
-| 학교알리미 | 경기 초·중·고 × 5항목, 15요청·300 표본 레코드 수신 | `SCHOOLINFO_API_KEY`, 공시연도 |
-| 경기데이터드림 사무소 | 무인증 표본 5행 수신 | `GG_OPEN_API_KEY` |
-| 건축HUB 건축물대장 | 수집기·응답 검증 테스트 완료, 실제 인증 조회 전 | `DATA_GO_KR_SERVICE_KEY`, 확인된 학교 지번 |
-| KOSIS 인구 | 수집기·응답 검증 테스트 완료, 실제 인증 조회 전 | `KOSIS_API_KEY`, 공식 분류 코드 설정 |
+| 나이스 학교기본정보 | 인증 조회 2,667행 수신, 2,660행 정규화·7행 식별 검토 보류 | 현재 키 발급·조회 완료. 사업과의 학교 동일성 대조 필요 |
+| 학교알리미 | 705개 인증 요청 완료, 응답 12,740행·정규화 12,736행·분류 보류 4행 | 현재 키 발급·조회 완료. 학교별 공시항목·동일성 대조 필요 |
+| 경기데이터드림 사무소 | 무인증 표본 5행 수신, 회원가입·인증키 발급 절차 대기 | `GG_OPEN_API_KEY` |
+| 건축HUB 건축물대장 | 수집기·응답 검증 구현, 공공데이터포털 로그인·활용신청 전 | `DATA_GO_KR_SERVICE_KEY`, 확인된 학교 지번 |
+| KOSIS 인구 | 공식 코드·선택 범위 검증, 실제 인증 조회 전 | `KOSIS_API_KEY`; 검증한 설정 파일 제공 |
 
-학교알리미 300건은 학교 300곳이 아닙니다. 같은 학교의 기본정보·학생·교실·지원시설·개방 정보가 별도 레코드입니다. 샘플을 전체 통계로 집계하지 않습니다. 전체 조회와 인증 후의 응답 검증은 키 등록 후 진행합니다.
+학교알리미의 초기 시도 단위 표본은 300레코드였으며, 현재는 시군구 지정 규칙에 맞춰 1개 시군구·15요청의 225레코드를 확인했습니다. 요청 범위가 달라진 결과로, 실제 학교 수가 줄었다는 뜻이 아닙니다. 같은 학교의 기본정보·학생·교실·지원시설·개방 정보가 별도 레코드이며 표본을 전체 통계로 집계하지 않습니다.
 
 ## 1. 나이스부터 시작
 
@@ -29,6 +34,10 @@ npm run data:connect -- neis
 
 학교 코드·정식 명칭·주소·홈페이지를 수집합니다. 공백만 정규화한 정확한 이름 일치는 `candidate`이며, 예정 학교명·개명·동명 학교는 주소와 출처를 대조해야 합니다. 학교 설립일·개교기념일은 건물 사용승인일이 아닙니다.
 
+2026-10-28 인증 조회의 2,667행은 1,000·1,000·667행의 세 페이지로 수신했습니다. 같은 코드의 서로 다른 두 행과 코드가 없는 다섯 행을 `school_quarantine`에 보존하고 나머지 2,660행만 `school_registry`에 둡니다. `complete: true`는 원시 응답 수집 완료이며 `normalization_complete: false`와 함께 표시될 수 있습니다. 화면도 **응답 행 수·정규화 행 수·식별 검토 보류 행 수**를 나눠 보여줍니다.
+
+166개 사업 중 정확한 이름 일치 후보는 8건입니다. 나머지 158건은 이름 기준 미연결이며, 학교가 존재하지 않는다는 의미가 아닙니다. 약칭, 시설명·사업명이 붙은 제목, 가칭·개교 예정, 통합학교, 학교 외 교육시설을 각각 대조해야 합니다. 후보를 자동으로 검수 완료 처리하지 않습니다.
+
 ## 2. 학교알리미
 
 [공식 이용안내](https://www.schoolinfo.go.kr/ng/go/pnnggo_a01_m0.do)에서 SNS 로그인 → 사용자 구분·사용목적 등록 → 인증키 발급을 진행하고 `.env`의 `SCHOOLINFO_API_KEY`에 저장합니다. [제공목록](https://www.schoolinfo.go.kr/ng/go/pnnggo_a01_l0.do)을 기준으로 경기 `41`, 초등 `02`·중등 `03`·고등 `04`를 조회합니다.
@@ -38,6 +47,14 @@ npm run data:connect -- schoolinfo --year 2025
 ```
 
 기본정보(0), 학생·학급(62), 교실(17), 지원시설(18), 시설개방(20)을 수집합니다. 기본정보는 조회 시점 자료이고, 나머지는 지정 공시연도 자료입니다. 특수·각종·기타학교는 이번 수집 범위에서 제외합니다. `52(5)` 같은 학생 수는 **전체 52명에 괄호 5명이 포함**된 값으로 보존합니다. 공시 제외·미제공·시설 없음·미개방·0은 구분합니다. 학교알리미 학교코드를 나이스 코드와 같다고 가정하지 않습니다.
+
+2026년 신규 발급키 안내에 따라 `sggCode`를 지정합니다. 수집기는 [공식 시도시군구 코드표](https://www.schoolinfo.go.kr/download/sido_sggCode.xlsx)와 조회 화면에서 확인한 **경기 47개 말단 시군구 × 초·중·고 3개 학교급 × 5항목 = 705개 요청**을 순서대로 실행합니다. 일반구가 있는 시는 구 코드만 사용하고 부모 시·과거 코드와 함께 요청하지 않습니다. 이 47개는 **현재 API 조회 코드**이며, 2025년 공시자료를 요청해도 2025년 행정경계를 재현했다는 뜻은 아닙니다.
+
+[공식 제공목록](https://www.schoolinfo.go.kr/ng/go/pnnggo_a01_l0.do)은 요청제한횟수를 ‘제한없음’으로 안내하지만, 수집기는 병렬 호출 없이 요청 사이 기본 100ms를 둡니다. 705개 조합이 끝나기 전에 오류가 나면 부분 결과를 성공으로 저장하지 않고 이전 결과를 유지합니다. 자료가 없다고 명시한 응답은 `no_data`로 구분하며 학교·시설이 실제 0개라고 해석하지 않습니다.
+
+`--sample`은 첫 번째 시군구인 수원시 장안구 `41111`만 요청합니다. 표본 응답이 전체 조회 결과를 덮어쓰지 않으며, 최종 수집 건수는 고유 학교 수가 아닌 항목별 레코드 합입니다.
+
+2026-10-28의 실제 인증 응답은 12,740행입니다. 정규화한 기본정보 2,612행과 공시항목별 2,531행(4항목)을 합해 12,736행이며, 일반 중학교 요청에 포함된 방송통신중학교(`25`) 자료 4행은 `schoolinfo_quarantine`에 원문·요청 조건과 함께 보존합니다. 일반 중학교로 강제 변환하지 않습니다. 현재 기본정보와 과거 공시자료의 학교 목록은 서로 다를 수 있습니다.
 
 ## 3. 경기 사무소
 
@@ -80,21 +97,21 @@ npm run data:connect -- buildings --parcels data/private/school-parcels.json
 
 [KOSIS 공유서비스](https://kosis.kr/openapi/)에서 활용신청하고 `.env`의 `KOSIS_API_KEY`에 저장합니다. [공식 개발 가이드](https://kosis.kr/openapi/devGuide/devGuide_0201List.do)의 URL 생성기에서 기관 `101`, 표 `DT_1B04006`(행정구역별·1세별 주민등록인구)을 선택합니다.
 
-`data/config/kosis-population.example.json`을 `data/private/kosis-population.json`으로 복사한 뒤, 선택한 경기 시·군·6–17세·남녀 합계 항목의 **실제 코드와 분류축**을 대조해 채웁니다. 지도 코드와 KOSIS 코드를 동일하다고 추정하지 않습니다. 설정 형식:
+`data/config/kosis-population.example.json`에는 공식 메타자료와 월자료 CSV로 대조한 **경기도 31개 시·군·6–17세·총인구수·2023/2024/2025년 12월**의 코드가 들어 있습니다. [확인 출처·선택 기준·파일 해시](KOSIS_SOURCE.md)를 먼저 읽으세요. `verified: true`는 코드와 선택 자료의 존재를 확인했다는 뜻이며 API 인증 성공이나 세부 경계의 불변을 의미하지 않습니다. 설정 형식:
 
 - `dimensions`: 지역/연령 축(`C1`~`C8` 중 실제 축).
 - `regions`: `{code, name, level: "municipality"}` 배열. 시 전체와 하위 구를 섞지 않습니다.
 - `ages`: `{code, age}` 배열. 6~17세를 각각 지정합니다.
 - `item`: `{code, name, meaning: "total_resident_population"}`.
 - `fixedSelections`: 다른 분류가 있으면 축별 합계 코드 하나.
-- `months`: 비교할 `YYYYMM` 목록. 예제는 같은 9월의 세 연도입니다.
-- 코드·경계를 확인한 후 `verified: true`, `verified_at`, 확인 메모를 기록합니다. 예제를 그대로 실행하면 조회를 거부합니다.
+- `months`: 비교할 `YYYYMM` 목록. 제공 설정은 `202312`, `202412`, `202512`입니다.
+- 범위를 바꾸려면 파일을 `data/private/kosis-population.json`으로 복사해 편집하고, 변경한 코드·시점의 공식 근거를 다시 확인합니다. 실제 확인 전에는 `verified: true`를 유지하지 않습니다.
 
 ```powershell
-npm run data:connect -- kosis --config data/private/kosis-population.json
+npm run data:connect -- kosis --config data/config/kosis-population.example.json
 ```
 
-인구는 재학생 수나 미래 예측이 아닙니다. 행정구역 변경은 동일 경계인지 확인하고, 결측을 0으로 채우지 않습니다. 예제 코드는 의도적으로 비워 두었으며 인증키가 든 URL 전체를 설정에 넣지 않습니다.
+설정 범위는 월별 372행, 세 시점 합계 1,116행의 관측 셀입니다. 이는 인구 수나 학교 수가 아닙니다. 인구는 재학생 수나 미래 예측이 아니며, 행정구역 변경은 동일 경계인지 확인하고 결측을 0으로 채우지 않습니다. 인증키가 든 URL 전체를 설정에 넣지 않습니다. 인증키를 받기 전 확인한 것은 공식 내려받기 자료이며 API 조회 결과와 구분합니다.
 
 ## 실행·검토·공개
 
@@ -103,7 +120,7 @@ npm run data:connect -- kosis --config data/private/kosis-population.json
 npm run data:connect -- all --sample --year 2025
 
 # 키와 추가 설정이 갖춰진 기관을 순서대로 수집
-npm run data:connect -- all --year 2025 --parcels data/private/school-parcels.json --config data/private/kosis-population.json
+npm run data:connect -- all --year 2025 --parcels data/private/school-parcels.json --config data/config/kosis-population.example.json
 
 # 성공·실패·인증키 존재 여부만 확인 (키 값 출력 없음)
 npm run data:connect -- status
@@ -112,8 +129,8 @@ npm run data:connect -- status
 npm run data:connect -- publish-status
 ```
 
-수집 결과는 `data/private/api-connections.json`에 모입니다. `school_registry`·`school_matches`, `schoolinfo_records`, `firm_matches`, `building_candidates`, `population_records`를 검토합니다. 전용 저장소에 보관하므로 대규모 학교 목록을 기존 1,000행 제한 Snapshot에 무리하게 넣지 않습니다. 한 기관 실패 시 다른 기관을 계속 처리하며, 해당 기관의 이전 성공 데이터는 보존하고 최신 실패 상태를 따로 기록합니다. 키/추가 설정 부족은 종료코드 2, 요청 실패는 1입니다.
+수집 결과는 `data/private/api-connections.json`에 모입니다. `school_registry`·`school_matches`·`school_quarantine`, `schoolinfo_records`, `firm_matches`, `building_candidates`, `population_records`를 검토합니다. 전용 저장소에 보관하므로 대규모 학교 목록을 기존 1,000행 제한 Snapshot에 무리하게 넣지 않습니다. 한 기관 실패 시 다른 기관을 계속 처리하며, 해당 기관의 이전 성공 데이터는 보존하고 최신 실패 상태를 따로 기록합니다. 키/추가 설정 부족은 종료코드 2, 요청 실패는 1입니다.
 
-`publish-status`는 `public/official-enrichment.json`에 **허용한 상태 필드만** 기록합니다. 전체 응답과 연결 후보는 공개하지 않습니다. 기존의 이 파일을 사용하는 별도 후보 공개 작업이 있었다면 해당 후보 배열은 이 명령의 출력에 포함되지 않습니다. 이 명령 자체로 GitHub에 push하거나 사이트를 배포하지 않습니다. 자동 정기 실행도 아직 설정하지 않았습니다.
+`publish-status`는 `public/official-enrichment.json`에 **허용한 상태 필드만** 기록합니다. 나이스의 응답·정규화·보류 건수는 공개하지만 격리 원문과 사유, 전체 응답과 연결 후보는 공개하지 않습니다. 기존의 이 파일을 사용하는 별도 후보 공개 작업이 있었다면 해당 후보 배열은 이 명령의 출력에 포함되지 않습니다. 이 명령 자체로 GitHub에 push하거나 사이트를 배포하지 않습니다. 자동 정기 실행도 아직 설정하지 않았습니다.
 
 다음 단계는 인증 조회 → 학교/사무소 동일성 대조 → 검토한 엔터티와 출처 연결 → 학생·시설·인구 비교 화면입니다. 인증키 등록만으로 작품집의 누락 태그나 건물 연령이 자동 확정되는 것은 아닙니다.

@@ -5,7 +5,17 @@ export function connectionText(service) {
   if (!service) return '연결 상태 미확인';
   const count = service.retrieved_count ?? service.sample_count;
   const label = Number.isSafeInteger(count) && count >= 0 ? `${count}건` : '건수 미확인';
+  const normalizedCounts = [service.raw_count, service.retrieved_count, service.quarantined_count].every(value => Number.isSafeInteger(value) && value >= 0) &&
+    service.raw_count === service.retrieved_count + service.quarantined_count;
+  if (normalizedCounts && (['sample_only', 'subset_only'].includes(service.status) || service.status === 'candidates_ready' && service.complete)) {
+    const format = number => number.toLocaleString('ko-KR');
+    const counts = `응답 ${format(service.raw_count)}행 · 정규화 ${format(service.retrieved_count)}행 · 식별 검토 보류 ${format(service.quarantined_count)}행`;
+    if (service.status === 'sample_only') return `시험 ${counts} · 전체 조회 아님`;
+    if (service.status === 'subset_only') return `선택 지역 ${counts} · 전체 조회 아님 · 연결 검토 전`;
+    return `${counts} · 학교·사업 연결 검토 전`;
+  }
   if (service.status === 'sample_only') return `시험 응답 ${label} · 전체 조회 아님`;
+  if (service.status === 'subset_only') return `선택 지역 ${label} 조회 · 전체 조회 아님 · 연결 검토 전`;
   if (service.status === 'candidates_ready') return service.complete ? `요청 범위 ${label} 조회 · 학교·사업 연결 검토 전` : '연결 상태 미확인';
   return STATUS_LABELS[service.status] ?? '연결 상태 미확인';
 }
@@ -18,6 +28,7 @@ export function renderConnections(container, enrichment) {
     return el('article', {class: 'api-connection-card'}, [el('h3', {}, item.title),
       el('p', {class: 'api-state'}, connectionText(service)), el('p', {}, item.purpose),
       service?.selection ? el('small', {}, `${service.selection.municipalities}개 시·군 · ${service.selection.months.join(', ')} · 연령별 셀 수`) : null,
+      service?.geography ? el('small', {}, `현재 코드표 ${service.geography.queried_districts}/${service.geography.official_sgg_count}개 시·군·구 · 과거 행정경계 통계와 구분`) : null,
       service?.queried_parcels !== undefined ? el('small', {}, `확인한 학교 지번 ${service.queried_parcels}곳 · 경기도 전체 아님`) : null,
       service?.checked_at ? el('small', {}, `조회 확인 ${service.checked_at.slice(0, 10)}${service.year ? ` · 공시연도 ${service.year}` : ''}`) : null,
       el('a', {href: item.url, target: '_blank', rel: 'noopener noreferrer'}, '공식 API 안내 ↗')]);

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {fetchSchoolInfo, normalizeSchoolInfo, parseSchoolInfoResponse, SCHOOLINFO_SOURCE} from '../../src/integrations/schoolinfo.js';
+import {fetchSchoolInfo, normalizeSchoolInfo, parseSchoolInfoResponse, SCHOOLINFO_SOURCE, SCHOOLINFO_SGG_CODES, SCHOOLINFO_GYEONGGI_DISTRICTS} from '../../src/integrations/schoolinfo.js';
 
 // Fixtures use the documented fields and shapes observed from the official
 // apiKey=sample endpoint. Names/codes below are synthetic, not reviewed matches.
@@ -71,31 +71,39 @@ test('시설개방은 미개방과 시설없음, 자료없음을 분리한다', 
 
 test('경기 초중고와 선택한 공시항목만 요청하고 인증값을 결과에 남기지 않는다', async () => {
   const requests = [];
-  const result = await fetchSchoolInfo({key: 'synthetic-secret-key', year: 2025, apiTypes: ['0', '62', '17', '18', '20'], fetchImpl: async (url, options) => {
+  const result = await fetchSchoolInfo({key: 'synthetic-secret-key', year: 2025, requestIntervalMs: 0, apiTypes: ['0', '62', '17', '18', '20'], fetchImpl: async (url, options) => {
     requests.push(url);
     assert.equal(url.searchParams.get('sidoCode'), '41');
     assert.equal(url.searchParams.get('apiKey'), 'synthetic-secret-key');
     assert.equal(options.redirect, 'error');
     assert.ok(options.signal);
     const type = url.searchParams.get('apiType');
+    const sgg = url.searchParams.get('sggCode');
+    assert.ok(SCHOOLINFO_SGG_CODES.includes(sgg));
     assert.equal(url.searchParams.get('pbanYr'), type === '0' ? null : '2025');
-    return response([base(url.searchParams.get('schulKndCode'))]);
+    const kind = url.searchParams.get('schulKndCode');
+    return response([{...base(kind), SCHUL_CODE: `S${sgg}${kind}`, ADRCD_CD: `${sgg}10100`}]);
   }});
-  assert.equal(requests.length, 15);
+  assert.equal(requests.length, 705);
   assert.equal(result.scope, 'complete');
-  assert.equal(result.total, 15);
+  assert.equal(result.total, 705);
   assert.equal(result.source_total, null);
-  assert.equal(result.queries.length, 15);
+  assert.equal(result.queries.length, 705);
+  assert.equal(result.completed_requests, result.planned_requests);
+  assert.equal(result.geography.sgg_codes.length, 47);
+  assert.equal(result.geography.boundary_basis, 'schoolinfo_current_query_codes');
   assert.equal(JSON.stringify(result).includes('synthetic-secret-key'), false);
 });
 
 test('공식 sample은 표본으로 표시하며 입력한 실키를 전송하지 않는다', async () => {
-  const result = await fetchSchoolInfo({sample: true, key: 'do-not-send', fetchImpl: async url => {
+  const result = await fetchSchoolInfo({sample: true, key: 'do-not-send', requestIntervalMs: 0, fetchImpl: async url => {
     assert.equal(url.searchParams.get('apiKey'), 'sample');
+    assert.equal(url.searchParams.get('sggCode'), '41111');
     return response([base(url.searchParams.get('schulKndCode'))]);
   }});
   assert.equal(result.scope, 'sample_only');
   assert.equal(result.total, 3);
+  assert.deepEqual(result.geography.sgg_codes, ['41111']);
   assert.match(result.limitations[0], /표본/);
 });
 
@@ -117,8 +125,117 @@ test('서버·네트워크·JSON 오류에 포함된 인증 URL을 출력하지 
   assert.throws(() => parseSchoolInfoResponse({resultCode: 'success', list: null}), /list/);
 });
 
-test('지역·학교급이 다른 응답과 중복 학교는 전체 조회 성공으로 처리하지 않는다', async () => {
-  await assert.rejects(fetchSchoolInfo({sample: true, fetchImpl: async () => response([{...base(), ADRCD_CD: '1111010100'}])}), /지역·학교급/);
-  await assert.rejects(fetchSchoolInfo({sample: true, fetchImpl: async () => response([base('03')])}), /지역·학교급/);
+test('지역이 다른 응답과 중복 학교는 전체 조회 성공으로 처리하지 않는다', async () => {
+  await assert.rejects(fetchSchoolInfo({sample: true, fetchImpl: async () => response([{...base(), ADRCD_CD: '1111010100'}])}), /지역/);
+  assert.throws(() => normalizeSchoolInfo(base('03'), {apiType: '0', schoolKind: '02'}), /학교급/);
   await assert.rejects(fetchSchoolInfo({sample: true, fetchImpl: async () => response([base(), base()])}), /중복/);
+});
+
+test('공식 말단47코드는 부모도시·옛화성과 겹치지 않고 현재 화성4구를 포함한다', () => {
+  assert.equal(SCHOOLINFO_SGG_CODES.length, 47);
+  assert.equal(new Set(SCHOOLINFO_SGG_CODES).size, 47);
+  for (const code of ['41110', '41130', '41170', '41190', '41270', '41280', '41460', '41590']) assert.equal(SCHOOLINFO_SGG_CODES.includes(code), false);
+  assert.deepEqual(SCHOOLINFO_GYEONGGI_DISTRICTS.filter(region => region.name.startsWith('화성시')).map(region => region.code), ['41591', '41593', '41595', '41597']);
+});
+
+test('선택한 시군구만 조회하면 경기 전체 완료가 아니라 subset_only다', async () => {
+  const result = await fetchSchoolInfo({key: 'synthetic', sggCodes: ['41111'], requestIntervalMs: 0, fetchImpl: async url => response([base(url.searchParams.get('schulKndCode'))])});
+  assert.equal(result.scope, 'subset_only');
+  assert.equal(result.planned_requests, 3);
+  assert.equal(result.completed_requests, 3);
+  assert.deepEqual(result.geography.sgg_codes, ['41111']);
+  assert.equal(result.rows[0].requested_sgg_code, '41111');
+});
+
+test('잘못된 코드·부모구역·요청량 설정은 호출 전 거절한다', async () => {
+  const fetchImpl = () => assert.fail('검증 전에 호출하지 않아야 합니다.');
+  for (const config of [{sggCodes: []}, {sggCodes: ['41111', '41111']}, {sggCodes: ['41590']}, {sggCodes: ['11110']},
+    {sggCodes: ['00000']}, {maxRequests: 1}, {maxRequests: 706}, {requestIntervalMs: -1}, {requestIntervalMs: 1.5}]) {
+    await assert.rejects(fetchSchoolInfo({key: 'synthetic', ...config, fetchImpl}));
+  }
+});
+
+test('시군구 필터가 무시되거나 과거 코드가 반환되면 조회 완료로 처리하지 않는다', async () => {
+  await assert.rejects(fetchSchoolInfo({sample: true, sggCodes: ['41591'], fetchImpl: async () => response([{...base(), ADRCD_CD: '4159025933'}])}), /시군구/);
+  await assert.rejects(fetchSchoolInfo({sample: true, fetchImpl: async () => response([{...base(), ADRCD_CD: undefined}])}), /시군구/);
+});
+
+test('중간 요청 실패와 시군구 간 중복은 부분결과를 반환하지 않는다', async () => {
+  let calls = 0;
+  await assert.rejects(fetchSchoolInfo({key: 'synthetic', requestIntervalMs: 0, sggCodes: ['41111', '41113'], fetchImpl: async () => {
+    if (++calls === 2) return {ok: false};
+    return response([base()]);
+  }}), /HTTP/);
+  assert.equal(calls, 2);
+  await assert.rejects(fetchSchoolInfo({key: 'synthetic', requestIntervalMs: 0, sggCodes: ['41111', '41113'], fetchImpl: async url => response([
+    {...base(), ADRCD_CD: `${url.searchParams.get('sggCode')}10100`},
+  ])}), /중복/);
+});
+
+test('공식 빈 결과 메시지는 no_data로 남기고 다른 fail은 성공으로 바꾸지 않는다', async () => {
+  const noData = {resultCode: 'fail', resultMsg: '해당 시도 및 시군구에 데이터가 존재하지 않습니다.'};
+  assert.deepEqual(parseSchoolInfoResponse(noData), []);
+  assert.throws(() => parseSchoolInfoResponse({...noData, list: [base()]}));
+  assert.throws(() => parseSchoolInfoResponse({...noData, resultMsg: '인증키가 유효하지 않습니다.'}));
+  assert.throws(() => parseSchoolInfoResponse({...noData, resultMsg: `${noData.resultMsg} apiKey=secret`}));
+  const result = await fetchSchoolInfo({key: 'synthetic', requestIntervalMs: 0, sggCodes: ['41290'], fetchImpl: async () => ({ok: true, json: async () => noData})});
+  assert.equal(result.total, 0);
+  assert.equal(result.scope, 'subset_only');
+  assert.equal(result.queries.length, 3);
+  assert.ok(result.queries.every(query => query.data_status === 'no_data'));
+});
+
+test('방송통신중학교 kind25를 일반 중학교로 바꾸지 않고 격리·대조 건수를 보존한다', async () => {
+  const broadcast = {...base('25'), SCHUL_CODE: 'S_SYNTHETIC_BROADCAST', SCHUL_NM: '검증용중학교부설방송통신중학교', COL_FGR_SUM: '100'};
+  const result = await fetchSchoolInfo({key: 'synthetic', apiTypes: ['62'], year: 2025, sggCodes: ['41111'], requestIntervalMs: 0,
+    fetchImpl: async url => {
+      const kind = url.searchParams.get('schulKndCode');
+      return response(kind === '03' ? [base(kind), broadcast] : [base(kind)]);
+    }});
+  assert.equal(result.raw_count, 4);
+  assert.equal(result.usable_count, 3);
+  assert.equal(result.quarantined_count, 1);
+  assert.equal(result.raw_count, result.rows.length + result.quarantine.length);
+  assert.equal(result.total, result.rows.length);
+  assert.equal(result.normalization_complete, false);
+  assert.equal(result.collection_complete, true);
+  assert.equal(result.scope, 'subset_only');
+  assert.equal(result.scope_basis, 'raw_response_rows_collected');
+  assert.equal(result.quarantine[0].reason, 'requested_school_kind_mismatch');
+  assert.equal(result.quarantine[0].requested_school_kind_code, '03');
+  assert.equal(result.quarantine[0].source_school_kind_code, '25');
+  assert.deepEqual(result.quarantine[0].raw, broadcast);
+  assert.equal(result.quarantine[0].source_row_index, 2);
+  assert.equal(result.quarantine[0].query.sgg_code, '41111');
+  assert.equal(result.quarantine[0].query.disclosure_year, 2025);
+  assert.ok(result.rows.every(row => row.official_school_code !== broadcast.SCHUL_CODE));
+  assert.equal(result.queries.reduce((sum, query) => sum + query.raw_count, 0), result.raw_count);
+  for (const query of result.queries) assert.equal(query.raw_count, query.usable_count + query.quarantined_count);
+  assert.throws(() => normalizeSchoolInfo(broadcast, {apiType: '62', year: 2025}), /지원 범위/);
+  broadcast.SCHUL_NM = '나중에 변경';
+  assert.notEqual(result.quarantine[0].raw.SCHUL_NM, broadcast.SCHUL_NM);
+});
+
+test('공식47지역 수집 완료여도 미지원·누락 학교급은 정규화 완료가 아니다', async () => {
+  const result = await fetchSchoolInfo({key: 'synthetic', requestIntervalMs: 0, fetchImpl: async url => {
+    const kind = url.searchParams.get('schulKndCode');
+    const region = url.searchParams.get('sggCode');
+    return response([{...base(kind), SCHUL_CODE: `S${region}${kind}`, SCHUL_KND_SC_CODE: null, ADRCD_CD: `${region}10100`}]);
+  }});
+  assert.equal(result.scope, 'complete');
+  assert.equal(result.collection_complete, true);
+  assert.equal(result.normalization_complete, false);
+  assert.equal(result.completed_requests, 141);
+  assert.equal(result.raw_count, 141);
+  assert.equal(result.usable_count, 0);
+  assert.equal(result.quarantined_count, 141);
+  assert.ok(result.queries.every(query => query.data_status === 'returned' && query.raw_count === 1 && query.usable_count === 0));
+});
+
+test('격리 대상도 지역·식별자와 중복 응답 검사를 우회하지 못한다', async () => {
+  await assert.rejects(fetchSchoolInfo({sample: true, fetchImpl: async () => response([{...base('25'), ADRCD_CD: '4111310100'}])}), /시군구/);
+  await assert.rejects(fetchSchoolInfo({sample: true, fetchImpl: async () => response([{...base('25'), SCHUL_CODE: null}])}), /식별자/);
+  await assert.rejects(fetchSchoolInfo({sample: true, requestIntervalMs: 0, sggCodes: ['41111', '41113'], fetchImpl: async url => response([
+    {...base('25'), ADRCD_CD: `${url.searchParams.get('sggCode')}10100`},
+  ])}), /중복/);
 });

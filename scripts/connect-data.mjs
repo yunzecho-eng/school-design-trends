@@ -36,7 +36,13 @@ async function run() {
   const options = {sample, parcels: option('--parcels'), config: option('--config')};
   if (mode === 'status') {
     const visible = publicConnectionState(state);
-    for (const [kind, item] of Object.entries(CONNECTIONS)) console.log(JSON.stringify({kind, title: item.title, key_configured: Boolean(process.env[item.env]?.trim()), required_env: item.env, saved_status: visible.services[kind].status, last_success_at: visible.services[kind].last_success_at}));
+    for (const [kind, item] of Object.entries(CONNECTIONS)) {
+      const service = visible.services[kind];
+      console.log(JSON.stringify({kind, title: item.title, key_configured: Boolean(process.env[item.env]?.trim()), required_env: item.env,
+        saved_status: service.status, last_success_at: service.last_success_at, raw_count: service.raw_count,
+        retrieved_count: service.retrieved_count, quarantined_count: service.quarantined_count,
+        normalization_complete: service.normalization_complete}));
+    }
     return;
   }
   if (mode === 'publish-status') {
@@ -75,7 +81,8 @@ async function run() {
       if (kind === 'neis') {
         data = await fetchNeisSchools({key, sample});
         const snapshot = await readJson('data/goe-annual.snapshot.json');
-        rows = {school_registry: data.rows, school_matches: matchNeisSchools(snapshot.projects, data.rows, {scope: data.scope})};
+        rows = {school_registry: data.rows, school_quarantine: data.quarantine,
+          school_matches: matchNeisSchools(snapshot.projects, data.rows, {scope: data.scope, normalizationComplete: data.normalization_complete})};
       } else if (kind === 'firms') {
         data = await fetchOfficialFirms({key, sample});
         const snapshot = await readJson('data/goe-annual.snapshot.json');
@@ -90,25 +97,32 @@ async function run() {
         const {fetchSchoolInfo} = await import('../src/integrations/schoolinfo.js');
         data = await fetchSchoolInfo({key, sample, year: option('--year') ?? '2025', apiTypes: ['0', '17', '18', '20', '62']});
         rows.schoolinfo_records = data.rows;
+        rows.schoolinfo_quarantine = data.quarantine;
+        rows.schoolinfo_queries = data.queries;
       } else {
         const {fetchKosisPopulation} = await import('../src/integrations/kosis.js');
         data = await fetchKosisPopulation({key, config: await readJson(options.config)});
         rows.population_records = data.rows;
       }
       const isSample = data.scope === 'sample_only';
+      const isComplete = data.scope === 'complete';
       const next = {...state, ...rows, checked_at: checkedAt, services: {...state.services, [kind]: {
-        status: isSample ? 'sample_only' : 'candidates_ready', complete: !isSample,
+        status: isSample ? 'sample_only' : isComplete ? 'candidates_ready' : 'subset_only', complete: isComplete,
         checked_at: checkedAt, last_success_at: checkedAt,
         source_total: ['neis', 'firms'].includes(kind) ? data.total : null,
-        retrieved_count: data.rows.length, sample_count: isSample ? data.rows.length : undefined,
+        retrieved_count: data.rows.length, sample_count: isSample ? data.raw_count ?? data.rows.length : undefined,
+        ...(['neis', 'schoolinfo'].includes(kind) ? {raw_count: data.raw_count, quarantined_count: data.quarantined_count,
+          normalization_complete: data.normalization_complete, scope_basis: data.scope_basis} : {}),
         queried_parcels: data.queried_parcels, year: kind === 'schoolinfo' ? option('--year') ?? '2025' : undefined,
         source_url: CONNECTIONS[kind].url, required_env: CONNECTIONS[kind].env, review_status: 'candidate_only',
         query_count: data.queries?.length, selection: data.selection, limitations: data.limitations,
+        geography: data.geography, planned_requests: data.planned_requests, completed_requests: data.completed_requests,
       }}};
       await atomicJson(stateFile, next);
       state = next;
       succeeded++;
-      console.log(JSON.stringify({kind, status: state.services[kind].status, records: data.rows.length, scope: data.scope}));
+      console.log(JSON.stringify({kind, status: state.services[kind].status, records: data.rows.length, scope: data.scope,
+        raw_count: data.raw_count, quarantined_count: data.quarantined_count, normalization_complete: data.normalization_complete}));
     } catch {
       failed++;
       // Keep prior data and status intact on failure. Raw errors may contain a secret.

@@ -54,7 +54,10 @@ function numericValue(raw) {
   if (typeof raw !== 'string' && typeof raw !== 'number') fail('인구 수치 형식이 올바르지 않습니다.');
   const value = String(raw).trim();
   if (['', '-', '...', '…', '*', 'x', 'X'].includes(value)) return null;
-  if (!/^(?:\d+|\d{1,3}(?:,\d{3})+)$/.test(value)) fail('인구 수치 또는 통계부호를 확인하세요.');
+  // DT is documented as VARCHAR2(100), not an integer-only serialization.
+  // Official DT_1B04006 bulk CSV uses e.g. 8820.0000. Accept only a zero
+  // fractional part before Number conversion so rounding cannot hide fractions.
+  if (!/^(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.0+)?$/.test(value)) fail('인구 수치 또는 통계부호를 확인하세요.');
   const number = Number(value.replaceAll(',', ''));
   if (!Number.isSafeInteger(number)) fail('인구 수치 범위를 확인하세요.');
   return number;

@@ -66,6 +66,8 @@ test('sample mode makes one keyless request and never claims complete coverage',
   assert.equal(result.scope, 'sample_only');
   assert.equal(result.rows.length, 1);
   assert.equal(result.total, 2667);
+  assert.equal(result.raw_count, 1);
+  assert.equal(result.quarantined_count, 0);
 });
 
 test('full mode follows pages until the declared total is reached with unique IDs', async () => {
@@ -78,12 +80,13 @@ test('full mode follows pages until the declared total is reached with unique ID
   assert.deepEqual(pages, [1, 2]);
   assert.equal(result.scope, 'complete');
   assert.equal(result.rows.length, 2);
+  assert.equal(result.normalization_complete, true);
 });
 
-test('changing totals, overlapping pages, truncated lists and page bounds fail closed', async () => {
+test('changing totals, repeated pages, truncated lists and page bounds fail closed', async () => {
   let calls = 0;
   await assert.rejects(fetchNeisSchools({key: 'KEY', fetchImpl: async () => response(payload([school()], ++calls === 1 ? 2 : 3))}), /총건수/);
-  await assert.rejects(fetchNeisSchools({key: 'KEY', fetchImpl: async () => response(payload([school()], 2))}), /코드가 반복/);
+  await assert.rejects(fetchNeisSchools({key: 'KEY', fetchImpl: async () => response(payload([school()], 2))}), /같은 페이지/);
   calls = 0;
   await assert.rejects(fetchNeisSchools({key: 'KEY', fetchImpl: async () => response(payload(++calls === 1 ? [school()] : [], 2))}), /응답이 비었/);
   await assert.rejects(fetchNeisSchools({key: 'KEY', maxPages: 1, fetchImpl: async () => response(payload([school()], 2))}), /안전 페이지/);
@@ -117,4 +120,74 @@ test('exact name matches remain candidates, ambiguity and sample absence remain 
   assert.equal(matchNeisSchools(projects, [source[0]])[0].match_status, 'candidate');
   assert.equal(matchNeisSchools(projects, [source[0]])[1].match_status, 'not_found');
   assert.equal(JSON.stringify({projects, source}), before);
+});
+
+test('blank planned-school codes and both rows of a shared code are quarantined without an invented ID', async () => {
+  const rawRows = [school('7652009'),
+    {...school('7531360', '고양송암고등학교'), SCHUL_KND_SC_NM: '평생학교(고)-3년6학기'},
+    {...school('7531360', '고양송암고등학교(2년제)'), SCHUL_KND_SC_NM: '평생학교(고)-2년6학기'},
+    school('       ', '남양2중학교(개교예정)'), school('       ', '양주2고(개교예정)'),
+    school('       ', '진접1중(202803신설예정)'), school('       ', '진접1초(202803신설예정)'),
+    school('       ', '회천4중(개교예정)')];
+  const before = JSON.stringify(rawRows);
+  const result = await fetchNeisSchools({key: 'TEST', fetchImpl: async () => response(payload(rawRows))});
+  assert.equal(result.scope, 'complete');
+  assert.equal(result.scope_basis, 'raw_response_rows_collected');
+  assert.equal(result.total, 8);
+  assert.equal(result.raw_count, 8);
+  assert.equal(result.rows.length, 1);
+  assert.equal(result.quarantined_count, 7);
+  assert.equal(result.normalization_complete, false);
+  assert.deepEqual(result.quarantine.map(row => row.source_row), [2, 3, 4, 5, 6, 7, 8]);
+  assert.deepEqual(result.quarantine.slice(0, 2).map(row => row.reasons), [['duplicate_school_code'], ['duplicate_school_code']]);
+  assert.ok(result.quarantine.slice(2).every(row => row.official_school_id === null && row.reasons.includes('missing_school_code')));
+  assert.deepEqual(result.quarantine.map(row => row.raw), rawRows.slice(1));
+  assert.equal(result.rows.length + result.quarantined_count, result.raw_count);
+  assert.equal(JSON.stringify(rawRows), before);
+  result.quarantine[0].raw.SCHUL_NM = 'local review change';
+  assert.equal(JSON.stringify(rawRows), before);
+  assert.throws(() => normalizeNeisSchool(rawRows[3]));
+});
+
+test('duplicate identifiers across different pages quarantine every occurrence, including identical rows', async () => {
+  const duplicate = school('7652010', '동일학교');
+  const pages = [[school('7652009'), duplicate], [{...duplicate}, school('7652011', '다른학교')]];
+  const result = await fetchNeisSchools({key: 'TEST', fetchImpl: async url => response(payload(pages[Number(url.searchParams.get('pIndex')) - 1], 4))});
+  assert.equal(result.raw_count, 4);
+  assert.equal(result.total, 4);
+  assert.deepEqual(result.rows.map(row => row.school_code), ['7652009', '7652011']);
+  assert.deepEqual(result.quarantine.map(row => row.source_row), [2, 3]);
+  assert.ok(result.quarantine.every(row => row.reasons.includes('duplicate_school_code') && row.reasons.includes('identical_duplicate_row')));
+  assert.equal(result.normalization_complete, false);
+});
+
+test('reordered fields or rows do not disguise a repeated page', async () => {
+  const first = [school('7652009'), school('7652010')];
+  const second = [...first].reverse().map(row => Object.fromEntries(Object.entries(row).reverse()));
+  let page = 0;
+  await assert.rejects(fetchNeisSchools({key: 'TEST', fetchImpl: async () => response(payload([first, second][page++], 4))}), /같은 페이지/);
+});
+
+test('three response pages finish using raw counts even when seven records need identity review', async () => {
+  const rawRows = Array.from({length: 2660}, (_, index) => school(String(1000000 + index), `검증용학교${index}`));
+  rawRows.splice(4, 0, school('7531360', '고양송암고등학교'));
+  rawRows.splice(1200, 0, school('7531360', '고양송암고등학교(2년제)'));
+  rawRows.push(...Array.from({length: 5}, (_, index) => school('       ', `개교예정학교${index}`)));
+  const requested = [];
+  const result = await fetchNeisSchools({key: 'TEST', fetchImpl: async url => {
+    const page = Number(url.searchParams.get('pIndex')); requested.push(page);
+    return response(payload(rawRows.slice((page - 1) * 1000, page * 1000), 2667));
+  }});
+  assert.deepEqual(requested, [1, 2, 3]);
+  assert.equal(result.total, 2667);
+  assert.equal(result.raw_count, 2667);
+  assert.equal(result.rows.length, 2660);
+  assert.equal(result.quarantined_count, 7);
+  assert.equal(new Set(result.rows.map(row => row.official_school_id)).size, 2660);
+  assert.equal(result.scope, 'complete');
+  assert.equal(result.normalization_complete, false);
+});
+
+test('unexpected education-office rows still reject the collection instead of hiding a failed region filter', async () => {
+  await assert.rejects(fetchNeisSchools({key: 'TEST', fetchImpl: async () => response(payload([{...school(), ATPT_OFCDC_SC_CODE: 'B10'}]))}), /경기도 요청과 다릅니다/);
 });

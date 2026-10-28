@@ -2,28 +2,42 @@
   "schema_version": "official-enrichment-1",
   "services": {
     "neis": {
-      "status": "sample_only",
-      "complete": false,
+      "status": "candidates_ready",
+      "complete": true,
       "source_url": "https://open.neis.go.kr/portal/data/service/selectServicePage.do?infId=OPEN17020190531110010104913&infSeq=2",
       "required_env": "NEIS_API_KEY",
       "review_status": "candidate_only",
-      "checked_at": "2026-10-28T02:12:14.250Z",
-      "last_success_at": "2026-10-28T02:12:14.250Z",
-      "retrieved_count": 5,
+      "checked_at": "2026-10-28T05:09:48.662Z",
+      "last_success_at": "2026-10-28T05:09:48.662Z",
+      "retrieved_count": 2660,
       "source_total": 2667,
-      "sample_count": 5
+      "raw_count": 2667,
+      "quarantined_count": 7,
+      "normalization_complete": false,
+      "scope_basis": "raw_response_rows_collected"
     },
     "schoolinfo": {
-      "status": "sample_only",
-      "complete": false,
+      "status": "candidates_ready",
+      "complete": true,
       "source_url": "https://www.schoolinfo.go.kr/ng/go/pnnggo_a01_m0.do",
       "required_env": "SCHOOLINFO_API_KEY",
       "review_status": "candidate_only",
-      "checked_at": "2026-10-28T02:12:14.402Z",
-      "last_success_at": "2026-10-28T02:12:14.402Z",
-      "retrieved_count": 300,
-      "sample_count": 300,
-      "year": "2025"
+      "checked_at": "2026-10-28T05:10:51.216Z",
+      "last_success_at": "2026-10-28T05:10:51.216Z",
+      "retrieved_count": 12736,
+      "raw_count": 12740,
+      "quarantined_count": 4,
+      "normalization_complete": false,
+      "scope_basis": "raw_response_rows_collected",
+      "year": "2025",
+      "geography": {
+        "boundary_basis": "schoolinfo_current_query_codes",
+        "codes_checked_on": "2026-10-28",
+        "queried_districts": 47,
+        "official_sgg_count": 47
+      },
+      "planned_requests": 705,
+      "completed_requests": 705
     },
     "firms": {
       "status": "sample_only",
@@ -45,12 +59,12 @@
       "review_status": "candidate_only"
     },
     "kosis": {
-      "status": "key_and_config_required",
+      "status": "key_required",
       "complete": false,
       "source_url": "https://kosis.kr/openapi/devGuide/devGuide_0201List.do",
       "required_env": "KOSIS_API_KEY",
       "review_status": "candidate_only"
     }
   },
-  "checked_at": "2026-10-28T02:12:14.783Z"
+  "checked_at": "2026-10-28T05:10:51.216Z"
 }

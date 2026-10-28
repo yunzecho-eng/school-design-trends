@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {CONNECTIONS, createConnectionState, publicConnectionState, prerequisite} from '../../src/integrations/connection-state.js';
+import {connectionText} from '../../src/ui/official-status.js';
 
 const successful = {status: 'candidates_ready', complete: true, checked_at: '2026-10-28T01:00:00.000Z', last_success_at: '2026-10-28T01:00:00.000Z', retrieved_count: 5, source_total: 2667};
 
@@ -72,6 +73,32 @@ test('KOSIS selection publishes only a bounded safe scope, never configuration c
   assert.deepEqual(publicConnectionState(state).services.kosis.selection, {municipalities: 2, ages: '6–17', months: ['202509', '202609']});
 });
 
+test('SchoolInfo district scope survives public reload without publishing raw geography or keys', () => {
+  const state = createConnectionState();
+  state.services.schoolinfo = {...successful, geography: {boundary_basis: 'schoolinfo_current_query_codes',
+    codes_checked_on: '2026-10-28', official_sgg_count: 47, sgg_codes: ['41111', '41113'], secret: 'SECRET'},
+    planned_requests: 30, completed_requests: 30, status: 'subset_only', complete: false};
+  const output = publicConnectionState(state);
+  assert.deepEqual(output.services.schoolinfo.geography, {boundary_basis: 'schoolinfo_current_query_codes',
+    codes_checked_on: '2026-10-28', official_sgg_count: 47, queried_districts: 2});
+  assert.equal(output.services.schoolinfo.complete, false);
+  assert.match(connectionText(output.services.schoolinfo), /전체 조회 아님/);
+  assert.equal(output.services.schoolinfo.completed_requests, 30);
+  assert.doesNotMatch(JSON.stringify(output), /SECRET|sgg_codes/);
+  assert.deepEqual(publicConnectionState(output), output);
+  state.services.schoolinfo.raw_count = 30;
+  state.services.schoolinfo.retrieved_count = 20;
+  state.services.schoolinfo.quarantined_count = 10;
+  state.services.schoolinfo.normalization_complete = false;
+  const partial = publicConnectionState(state);
+  assert.match(connectionText(partial.services.schoolinfo), /선택 지역 응답 30행 · 정규화 20행 · 식별 검토 보류 10행 · 전체 조회 아님/);
+  assert.deepEqual(publicConnectionState(partial), partial);
+  state.services.schoolinfo.last_attempt = {status: 'error', checked_at: '2026-10-28T03:00:00.000Z'};
+  const failed = publicConnectionState(state).services.schoolinfo;
+  assert.equal(Object.hasOwn(failed, 'geography'), false);
+  assert.equal(Object.hasOwn(failed, 'completed_requests'), false);
+});
+
 test('prerequisites distinguish keys, reviewed-parcel input and population configuration', () => {
   for (const kind of ['neis', 'schoolinfo', 'firms']) {
     assert.equal(prerequisite(kind, {}), 'key_required');
@@ -80,11 +107,61 @@ test('prerequisites distinguish keys, reviewed-parcel input and population confi
     assert.equal(prerequisite(kind, {[CONNECTIONS[kind].env]: 'present'}), null);
   }
   assert.equal(prerequisite('buildings', {}), 'key_and_parcel_required');
+  assert.equal(prerequisite('buildings', {}, {parcels: 'reviewed.json'}), 'key_required');
   assert.equal(prerequisite('buildings', {}, {sample: true}), 'key_and_parcel_required');
   assert.equal(prerequisite('buildings', {DATA_GO_KR_SERVICE_KEY: 'present'}), 'parcel_required');
   assert.equal(prerequisite('buildings', {DATA_GO_KR_SERVICE_KEY: 'present'}, {parcels: 'local.json'}), null);
   assert.equal(prerequisite('kosis', {}), 'key_and_config_required');
+  assert.equal(prerequisite('kosis', {}, {config: 'reviewed.json'}), 'key_required');
   assert.equal(prerequisite('kosis', {KOSIS_API_KEY: 'present'}), 'config_required');
   assert.equal(prerequisite('kosis', {KOSIS_API_KEY: 'present'}, {config: 'local.json'}), null);
   assert.throws(() => prerequisite('unknown', {}));
+});
+
+test('NEIS publishes response and usable counts but never its quarantined rows or reasons', () => {
+  const state = createConnectionState();
+  state.school_quarantine = [{source_row: 3, reasons: ['PRIVATE-REASON'], raw: {name: 'PRIVATE-SCHOOL'}}];
+  state.services.neis = {...successful, source_total: 2667, raw_count: 2667, retrieved_count: 2660,
+    quarantined_count: 7, normalization_complete: false, scope_basis: 'raw_response_rows_collected',
+    quarantine: state.school_quarantine};
+  const result = publicConnectionState(state);
+  assert.equal(result.services.neis.complete, true);
+  assert.equal(result.services.neis.raw_count, 2667);
+  assert.equal(result.services.neis.retrieved_count, 2660);
+  assert.equal(result.services.neis.quarantined_count, 7);
+  assert.equal(result.services.neis.normalization_complete, false);
+  assert.equal(result.services.neis.scope_basis, 'raw_response_rows_collected');
+  assert.doesNotMatch(JSON.stringify(result), /PRIVATE|school_quarantine|"quarantine"|"reasons"|"raw"/);
+  assert.equal(connectionText(result.services.neis), '응답 2,667행 · 정규화 2,660행 · 식별 검토 보류 7행 · 학교·사업 연결 검토 전');
+});
+
+test('NEIS sample, zero quarantine and failed refresh communicate distinct collection states', () => {
+  const state = createConnectionState();
+  state.services.neis = {...successful, status: 'sample_only', raw_count: 5, retrieved_count: 4,
+    quarantined_count: 1, normalization_complete: false};
+  const sample = publicConnectionState(state).services.neis;
+  assert.equal(sample.complete, false);
+  assert.equal(connectionText(sample), '시험 응답 5행 · 정규화 4행 · 식별 검토 보류 1행 · 전체 조회 아님');
+  state.services.neis = {...successful, raw_count: 5, retrieved_count: 5, quarantined_count: 0, normalization_complete: true};
+  const complete = publicConnectionState(state).services.neis;
+  assert.equal(complete.normalization_complete, true);
+  assert.match(connectionText(complete), /식별 검토 보류 0행 · 학교·사업 연결 검토 전/);
+  state.services.neis.last_attempt = {status: 'error', checked_at: '2026-10-28T03:00:00.000Z'};
+  const failed = publicConnectionState(state).services.neis;
+  for (const field of ['raw_count', 'quarantined_count', 'normalization_complete', 'scope_basis']) assert.equal(Object.hasOwn(failed, field), false);
+  assert.equal(connectionText(failed), '조회 실패 · 재확인 필요');
+});
+
+test('NEIS normalization metadata cannot assert success with quarantined rows or inconsistent counts', () => {
+  const state = createConnectionState();
+  state.services.neis = {...successful, raw_count: 6, retrieved_count: 5, quarantined_count: 1,
+    normalization_complete: true, scope_basis: 'SECRET-UNSUPPORTED'};
+  let result = publicConnectionState(state).services.neis;
+  assert.equal(result.normalization_complete, false);
+  assert.equal(Object.hasOwn(result, 'scope_basis'), false);
+  for (const raw_count of ['6', null, -1, 5, 7]) {
+    state.services.neis.raw_count = raw_count;
+    result = publicConnectionState(state).services.neis;
+    for (const field of ['raw_count', 'quarantined_count', 'normalization_complete']) assert.equal(Object.hasOwn(result, field), false);
+  }
 });

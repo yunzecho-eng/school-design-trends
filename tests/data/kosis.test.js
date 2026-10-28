@@ -38,9 +38,19 @@ test('normalizes source-qualified region, age, month and actual zeros without co
   assert.equal(actual[5].measure, 'resident_population');
 });
 
-test('example config deliberately cannot call the API before official selections are confirmed', async () => {
+test('officially checked example config selects 31 municipalities and aligned December months without districts', async () => {
   const example = JSON.parse(await readFile(new URL('../../data/config/kosis-population.example.json', import.meta.url), 'utf8'));
-  assert.throws(() => validateKosisConfig(example), /URL 생성기/);
+  assert.equal(validateKosisConfig(example), example);
+  assert.equal(example.regions.length, 31);
+  assert.equal(example.ages.length, 12);
+  assert.deepEqual(example.dimensions, {region: 'C1', age: 'C2'});
+  assert.deepEqual(example.months, ['202312', '202412', '202512']);
+  assert.equal(example.item.code, 'T2');
+  assert.equal(example.ages.find(row => row.age === 6).code, '0502');
+  assert.equal(example.ages.find(row => row.age === 17).code, '1003');
+  assert.ok(example.regions.every(row => row.name.endsWith('시') || row.name.endsWith('군')));
+  assert.ok(!example.regions.some(row => ['41', '41192', '41194', '41196', '41591', '41593', '41595', '41597'].includes(row.code)));
+  assert.throws(() => validateKosisConfig({...example, verified: false}), /URL 생성기/);
   assert.throws(() => validateKosisConfig({...config(), apiKey: 'not-allowed'}), /인증키/);
   assert.throws(() => validateKosisConfig({...config(), url: 'https://example.org'}), /설정 형식/);
   assert.throws(() => validateKosisConfig({...config(), verified_at: '2026-02-30'}));
@@ -106,8 +116,33 @@ test('fails closed without keys/config and never echoes raw network/API failure 
   }
 });
 
-test('invalid population values are not accepted as known counts and unknown source dates stay null', () => {
-  for (const invalid of ['-12', '1.2', '1,23', 'NaN', 'unknown', false, {}, Number.MAX_SAFE_INTEGER + 1]) {
+test('accepts exact integer decimal serialization from official bulk data without rounding or dropping raw values', () => {
+  // Official 2023 December bulk row: 수원시 6세, total population 8820.0000.
+  // API documents DT as a string; fixtures cover both whole and decimal forms.
+  for (const [raw, expected] of [
+    ['8820.0000', 8820], ['8,820.0000', 8820], ['0.0000', 0],
+    ['8820', 8820], [8820, 8820], ['9007199254740991.0000', Number.MAX_SAFE_INTEGER],
+  ]) {
+    const rows = payload(); rows[0].DT = raw;
+    const actual = parseKosisPopulation(rows, config(), '202609')[0];
+    assert.equal(actual.value, expected);
+    assert.equal(actual.raw_value, raw);
+    assert.equal(actual.missing, false);
+  }
+  for (const raw of [null, undefined, '', '   ']) {
+    const rows = payload(); rows[0].DT = raw;
+    const actual = parseKosisPopulation(rows, config(), '202609')[0];
+    assert.equal(actual.value, null);
+    assert.equal(actual.missing, true);
+  }
+});
+
+test('fractional, unsafe and invalid population values are rejected rather than rounded or coerced to zero', () => {
+  for (const invalid of [
+    '-12', '-0.0000', '1.2', '8820.0001', '9007199254740991.0001', '0.000000000000000000000001',
+    '1,23', '8,82.0000', '8820.', '1e3', 'NaN', NaN, Infinity, 'unknown', false, true, {},
+    Number.MAX_SAFE_INTEGER + 1, '9007199254740992.0000',
+  ]) {
     const rows = payload(); rows[0].DT = invalid;
     assert.throws(() => parseKosisPopulation(rows, config(), '202609'));
   }

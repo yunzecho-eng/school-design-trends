@@ -86,10 +86,49 @@ async function requestJson(url, fetchImpl) {
   catch { throw new Error('나이스 API가 JSON 형식으로 응답하지 않았습니다.'); }
 }
 
+// JSON 객체의 필드 순서가 달라도 같은 행·페이지로 판별한다.
+function canonicalJson(value) {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  if (record(value)) return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(',')}}`;
+  return JSON.stringify(value);
+}
+
+function partitionSchoolRows(rawRows) {
+  const groups = new Map();
+  for (const raw of rawRows) {
+    // 다른 교육청 자료가 섞이면 조회 필터가 무시된 것일 수 있으므로 전체 작업을 중단한다.
+    if (raw.ATPT_OFCDC_SC_CODE !== 'J10') throw new Error('나이스 응답의 교육청이 경기도 요청과 다릅니다.');
+    if (typeof raw.SD_SCHUL_CODE !== 'string' || !/^\d{7}$/.test(raw.SD_SCHUL_CODE)) continue;
+    const group = groups.get(raw.SD_SCHUL_CODE) ?? [];
+    group.push(canonicalJson(raw));
+    groups.set(raw.SD_SCHUL_CODE, group);
+  }
+  const rows = [], quarantine = [];
+  rawRows.forEach((raw, index) => {
+    const reasons = [];
+    const validCode = typeof raw.SD_SCHUL_CODE === 'string' && /^\d{7}$/.test(raw.SD_SCHUL_CODE);
+    if (!validCode) reasons.push(raw.SD_SCHUL_CODE == null || typeof raw.SD_SCHUL_CODE === 'string' && !raw.SD_SCHUL_CODE.trim() ? 'missing_school_code' : 'invalid_school_code');
+    if (!text(raw.SCHUL_NM)) reasons.push('missing_school_name');
+    const group = validCode ? groups.get(raw.SD_SCHUL_CODE) : null;
+    if (group?.length > 1) {
+      // 같은 코드를 서로 다른 과정·학교가 공유하거나 같은 행이 중복돼도 하나를 임의 선택하지 않는다.
+      reasons.push('duplicate_school_code');
+      const signature = canonicalJson(raw);
+      if (group.filter(value => value === signature).length > 1) reasons.push('identical_duplicate_row');
+    }
+    if (reasons.length) quarantine.push({source_row: index + 1, reasons,
+      source_id: NEIS_SOURCE.id, official_school_id: validCode ? `neis:J10:${raw.SD_SCHUL_CODE}` : null,
+      raw: structuredClone(raw)});
+    else rows.push(normalizeNeisSchool(raw));
+  });
+  return {rows, raw_count: rawRows.length, quarantined_count: quarantine.length, quarantine,
+    normalization_complete: quarantine.length === 0};
+}
+
 export async function fetchNeisSchools({key, sample = false, fetchImpl = fetch, maxPages = 100} = {}) {
   if (!sample && (!text(key) || key.trim().toLowerCase() === 'sample')) throw new Error('NEIS_API_KEY가 필요합니다. 키 없는 시험은 --sample을 사용하세요.');
   if (!Number.isSafeInteger(maxPages) || maxPages < 1 || maxPages > 1000) throw new Error('나이스 수집 페이지 한도는 1~1000 정수여야 합니다.');
-  const rows = []; const identifiers = new Set(); let total = null;
+  const rawRows = []; const seenPages = new Set(); let total = null;
   for (let page = 1; page <= maxPages; page++) {
     const url = new URL(NEIS_SOURCE.endpoint);
     url.search = new URLSearchParams({Type: 'json', ATPT_OFCDC_SC_CODE: 'J10', pIndex: String(page),
@@ -97,20 +136,21 @@ export async function fetchNeisSchools({key, sample = false, fetchImpl = fetch, 
     const parsed = parseNeisResponse(await requestJson(url, fetchImpl));
     if (total !== null && total !== parsed.total) throw new Error('수집 중 나이스 학교 총건수가 바뀌었습니다. 다시 실행하세요.');
     total = parsed.total;
-    for (const raw of parsed.rows) {
-      const row = normalizeNeisSchool(raw);
-      if (identifiers.has(row.official_school_id)) throw new Error('나이스 학교 코드가 반복됩니다. 인증·페이지 처리를 확인하세요.');
-      identifiers.add(row.official_school_id); rows.push(row);
-    }
-    if (rows.length > total) throw new Error('나이스 응답 건수가 총건수와 일치하지 않습니다.');
-    if (sample || rows.length === total) return {rows, total, scope: sample ? 'sample_only' : 'complete'};
+    const signature = canonicalJson(parsed.rows.map(canonicalJson).sort());
+    if (seenPages.has(signature)) throw new Error('나이스 API가 같은 페이지를 반복했습니다. 인증·페이지 처리를 확인하세요.');
+    seenPages.add(signature);
+    rawRows.push(...parsed.rows);
+    if (rawRows.length > total) throw new Error('나이스 응답 건수가 총건수와 일치하지 않습니다.');
+    // 전체 수집 판정은 원시 응답 건수 기준이다. 정규화 보류 행은 별도로 보고한다.
+    if (sample || rawRows.length === total) return {...partitionSchoolRows(rawRows), total,
+      scope: sample ? 'sample_only' : 'complete', scope_basis: 'raw_response_rows_collected'};
     if (!parsed.rows.length) throw new Error('나이스 전체 조회가 끝나기 전에 응답이 비었습니다.');
   }
   throw new Error('나이스 수집의 안전 페이지 한도를 넘었습니다.');
 }
 
 // 이름이 완전히 같은 경우에도 동일 학교임을 확정하지 않는다. 가칭·개명·통합은 별도 검수한다.
-export function matchNeisSchools(projects, rows, {scope = 'complete'} = {}) {
+export function matchNeisSchools(projects, rows, {scope = 'complete', normalizationComplete = true} = {}) {
   const index = new Map();
   for (const row of rows) {
     const name = normalizeName(row.name);
@@ -122,7 +162,7 @@ export function matchNeisSchools(projects, rows, {scope = 'complete'} = {}) {
   return projects.map(project => {
     const candidates = index.get(normalizeName(project.title)) ?? [];
     return {project_id: project.project_id, name: project.title,
-      match_status: candidates.length > 1 ? 'ambiguous' : candidates.length ? 'candidate' : scope === 'sample_only' ? 'not_searched' : 'not_found',
+      match_status: candidates.length > 1 ? 'ambiguous' : candidates.length ? 'candidate' : scope !== 'complete' || !normalizationComplete ? 'not_searched' : 'not_found',
       match_basis: 'normalized_exact_name_only', verified: false, candidates: [...candidates]};
   });
 }
